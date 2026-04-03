@@ -62,9 +62,10 @@ Open [http://localhost:3000](http://localhost:3000)
 ## 🃏 Game Flow Walkthrough
 
 ### Preparation
-1. **Admin**: Open `/admin/dashboard` in a desktop browser.
-2. **Display**: Open `/admin/display` on the projector.
-3. **Players**: Go to the landing page `/` and click "Enter the Arena".
+1. **Initialize Database**: The first time you launch the app, log into `/admin` with your email/password credentials. You will be greeted with an **Initialize Database** button. Click it to automatically scaffold your Firestore collections!
+2. **Admin**: Open `/admin/dashboard` in a desktop browser.
+3. **Display**: Open `/admin/display` on the projector.
+4. **Players**: Go to the landing page `/` and click "Enter the Arena".
 
 ### Phase 1: Registration
 - Players input their name and college on the `/join` page.

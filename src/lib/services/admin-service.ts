@@ -72,6 +72,23 @@ export const confirmEliminations = async (playerIds: string[]) => {
   await updateGameState({ playersAlive: snap.size, pendingEliminations: [] });
 };
 
+export const activateWaitingPlayers = async () => {
+  const q = query(collection(db, "players"), where("status", "==", "waiting"));
+  const snap = await getDocs(q);
+  
+  if (snap.empty) return;
+
+  const batch = writeBatch(db);
+  snap.docs.forEach(d => {
+    batch.update(d.ref, { status: "alive" });
+  });
+  await batch.commit();
+
+  const qAlive = query(collection(db, "players"), where("status", "==", "alive"));
+  const snapAlive = await getDocs(qAlive);
+  await updateGameState({ playersAlive: snapAlive.size });
+};
+
 export const startTimer = async (duration: number) => {
   const { serverTimestamp } = await import("firebase/firestore");
   await updateGameState({

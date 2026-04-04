@@ -17,12 +17,36 @@ export default function JoinPage() {
   const [checkingState, setCheckingState] = useState(true);
 
   useEffect(() => {
+    // 1. First check if user is already authenticated and registered
+    import("@/lib/firebase").then(({ auth }) => {
+      import("@/lib/services/player-service").then(({ getPlayer }) => {
+        const checkAuth = async () => {
+          // Wait for auth to initialize (max 2 attempts)
+          let attempts = 0;
+          while (attempts < 5) {
+            if (auth.currentUser) {
+              const p = await getPlayer(auth.currentUser.uid);
+              if (p) {
+                if (p.status === "eliminated") router.push("/eliminated");
+                else router.push("/lobby");
+                return;
+              }
+              break; // Auth exists but no player record, stay on join
+            }
+            await new Promise(r => setTimeout(r, 200));
+            attempts++;
+          }
+        };
+        checkAuth();
+      });
+    });
+
     const unsub = subscribeToGameState((state) => {
       setGameState(state);
       setCheckingState(false);
     });
     return () => unsub();
-  }, []);
+  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -124,7 +124,8 @@ export const finalizeRoundResults = async (updates: PlayerRoundUpdate[]) => {
     phase: "standby",
     results: null,
     displayMessage: "Round Finalized. Prepare for the next trial.",
-    submissionsCount: 0
+    submissionsCount: 0,
+    currentSlot: increment(1)
   });
 
   await batch.commit();
@@ -133,4 +134,11 @@ export const finalizeRoundResults = async (updates: PlayerRoundUpdate[]) => {
   const qAlive = query(collection(db, "players"), where("status", "==", "alive"));
   const snapAlive = await getDocs(qAlive);
   await updateGameState({ playersAlive: snapAlive.size });
+};
+export const resetToSlotOne = async () => {
+  await updateGameState({
+    currentSlot: 1,
+    phase: "standby",
+    displayMessage: "Event Slot Reset to 1. All previous slot data remains in DB but UI shifted.",
+  });
 };

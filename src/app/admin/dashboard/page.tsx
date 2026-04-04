@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { subscribeToGameState, subscribeToEventConfig, GameState, EventConfig, GamePhase } from "@/lib/services/game-service";
-import { updateGameState, startTimer, confirmEliminations, emergencyPauseToggle, finalizeRoundResults, PlayerRoundUpdate } from "@/lib/services/admin-service";
+import { updateGameState, startTimer, confirmEliminations, emergencyPauseToggle, finalizeRoundResults, PlayerRoundUpdate, resetToSlotOne } from "@/lib/services/admin-service";
 import { collection, onSnapshot, query, doc, writeBatch, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { PlayerData } from "@/lib/services/player-service";
@@ -299,6 +299,12 @@ export default function AdminDashboard() {
           >
             {gameState.wildEntryOpen ? "⚡ CLOSE WILD ENTRY" : "⚡ OPEN WILD ENTRY"}
           </button>
+          <button
+            onClick={() => { if(confirm("Reset current slot to 1?")) resetToSlotOne(); }}
+            className="bg-surface border border-border px-4 py-2 uppercase text-xs hover:bg-border transition-colors mr-2"
+          >
+            ↺ RESET SLOT
+          </button>
           <button 
             onClick={() => emergencyPauseToggle(gameState.emergencyPause)}
             className={`${gameState.emergencyPause ? 'bg-primary text-white' : 'bg-primary/20 hover:bg-primary/50 text-primary'} border border-primary px-4 py-2 uppercase text-xs font-bold transition-colors shadow-glow-red`}
@@ -494,7 +500,11 @@ export default function AdminDashboard() {
                             <option value="A2">A2: Range Minority</option>
                             <option value="A3">A3: Sequential Pair Elimination</option>
                             <option value="A4">A4: Weighted Ranking</option>
+                            <option value="B5">B5: Nashify / Black Hole (Puzzle)</option>
+                            <option value="B6">B6: Market of Lemons (Physical)</option>
                             <option value="B7">B7: Threshold Route Choice</option>
+                            <option value="B8">B8: Information Cascade (Physical)</option>
+                            <option value="C9">C9: Pluralistic Silence</option>
                             <option value="C10">C10: Top Percentage Elimination</option>
                             <option value="OFFLINE">Offline: Manual/Physical Trial</option>
                           </select>

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { subscribeToGameState, subscribeToEventConfig, GameState, EventConfig, GamePhase } from "@/lib/services/game-service";
-import { updateGameState, startTimer, confirmEliminations, emergencyPauseToggle, activateWaitingPlayers } from "@/lib/services/admin-service";
+import { updateGameState, startTimer, confirmEliminations, emergencyPauseToggle } from "@/lib/services/admin-service";
 import { collection, onSnapshot, query } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { PlayerData } from "@/lib/services/player-service";
@@ -42,6 +42,16 @@ export default function AdminDashboard() {
       unsubPlayers();
     };
   }, [user, authLoading, router]);
+
+  // Auto-lock when all alive players have submitted
+  useEffect(() => {
+    if (!gameState || gameState.phase !== "active") return;
+    const totalAlive = players.filter(p => p.status === "alive").length;
+    const submitted = players.filter(p => p.currentSubmission !== null && p.status === "alive").length;
+    if (totalAlive > 0 && submitted >= totalAlive) {
+      updateGameState({ phase: "locked" });
+    }
+  }, [players, gameState]);
 
   if (authLoading) return <div className="p-8 font-mono text-textMuted bg-background min-h-screen">Verifying identity...</div>;
 
@@ -138,7 +148,18 @@ export default function AdminDashboard() {
       currentGameId: nextSlot.gameId,
       phase: "lobby",
       results: null,
-      displayMessage: null
+      displayMessage: null,
+      submissionsCount: 0  // reset for new round
+    });
+    // Clear currentSubmission on all players for the new round
+    import("firebase/firestore").then(({ writeBatch, doc, collection, getDocs }) => {
+      import("@/lib/firebase").then(({ db }) => {
+        getDocs(collection(db, "players")).then(snap => {
+          const batch = writeBatch(db);
+          snap.docs.forEach(d => batch.update(d.ref, { currentSubmission: null, submittedAt: null }));
+          batch.commit();
+        });
+      });
     });
   };
 
@@ -209,25 +230,19 @@ export default function AdminDashboard() {
                 {gameState.phase === "lobby" && (
                   <div className="flex flex-col items-center justify-center space-y-6 h-full p-4">
                     <p className="text-sm text-textMuted text-center">Players are currently in the Waiting Lobby.<br/>Ready to start {currentSlotConfig?.gameName}?</p>
-                    <div className="flex gap-4">
-                       <button 
-                          onClick={async () => {
-                             await activateWaitingPlayers();
-                          }}
-                          className="bg-secondary/20 border border-secondary text-secondary hover:bg-secondary hover:text-background px-6 py-3 tracking-widest uppercase transition-colors shadow-glow-gold"
-                       >
-                         AUTHORIZE ONSITE PLAYERS
-                       </button>
-                       <button 
-                          onClick={() => {
-                             setPhase("active");
-                             startTimer(currentSlotConfig?.config.timerSeconds || 60);
-                          }}
-                          className="bg-primary/20 border border-primary text-primary hover:bg-primary hover:text-white px-8 py-3 tracking-widest uppercase transition-colors shadow-glow-red"
-                       >
-                         START GAME TIMER
-                       </button>
-                    </div>
+                    <button 
+                       onClick={() => {
+                          updateGameState({ 
+                            phase: "active",
+                            playersAlive: totalAlive,
+                            submissionsCount: 0
+                          });
+                          startTimer(currentSlotConfig?.config.timerSeconds || 60);
+                       }}
+                       className="bg-primary/20 border border-primary text-primary hover:bg-primary hover:text-white px-8 py-3 tracking-widest uppercase transition-colors shadow-glow-red"
+                    >
+                      START GAME TIMER
+                    </button>
                   </div>
                 )}
                 

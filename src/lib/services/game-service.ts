@@ -1,5 +1,5 @@
 import { db } from "@/lib/firebase";
-import { doc, onSnapshot, setDoc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { doc, onSnapshot, setDoc, serverTimestamp, updateDoc, increment } from "firebase/firestore";
 import { PlayerData } from "./player-service";
 
 // ==========================================
@@ -106,5 +106,11 @@ export const submitGameInput = async (uid: string, name: string, slotNumber: num
     rank: null,
     pointsAwarded: null,
     eliminated: null
+  });
+
+  // Increment live submission counter in gameState
+  const gameStateRef = doc(db, "system", "gameState");
+  await updateDoc(gameStateRef, {
+    submissionsCount: increment(1)
   });
 };

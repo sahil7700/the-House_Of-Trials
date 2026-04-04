@@ -75,18 +75,34 @@ export default function AdminDashboard() {
     setCalculating(true);
     setPhase("calculating");
     try {
-      const res = await fetch("/api/game/calculate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slotNumber: gameState.currentSlot, gameId: gameState.currentGameId })
-      });
-      const data = await res.json();
-      if (!data.success) {
-         alert("Error calculating: " + data.error);
+      const { runGenericCalculator } = await import("@/app/api/game/calculate/calculators");
+      const { getDocs, query, collection, where } = await import("firebase/firestore");
+      
+      if (!currentSlotConfig) {
+        throw new Error("Invalid slot config");
       }
-    } catch (e) {
-      console.error(e);
-      alert("Failed to reach calculate API.");
+
+      // Fetch all submissions for current slot
+      const q = query(collection(db, "submissions"), where("slotNumber", "==", gameState.currentSlot));
+      const querySnapshot = await getDocs(q);
+      
+      const submissions = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      // Run Dynamic Calculator
+      const { results, eliminatedPlayerIds } = runGenericCalculator(submissions, currentSlotConfig);
+
+      // Update GameState with results
+      await updateGameState({
+        results: { ...results, eliminatedPlayerIds },
+        phase: "reveal"
+      });
+      
+    } catch (e: any) {
+      console.error("Calculate Error:", e);
+      alert("Failed to calculate: " + e.message);
     }
     setCalculating(false);
   };

@@ -1,16 +1,22 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { PlayerData, subscribeToPlayer } from "@/lib/services/player-service";
+import { subscribeToGameState, GameState } from "@/lib/services/game-service";
 import { useRouter } from "next/navigation";
+import { doc, updateDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 export default function EliminatedPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [player, setPlayer] = useState<PlayerData | null>(null);
+  const [gameState, setGameState] = useState<GameState | null>(null);
+  const [reviving, setReviving] = useState(false);
+  const [revived, setRevived] = useState(false);
 
   useEffect(() => {
     if (loading) return;
@@ -18,16 +24,40 @@ export default function EliminatedPage() {
       router.push("/join");
       return;
     }
-    const unsub = subscribeToPlayer(user.uid, (p) => {
+    const unsubPlayer = subscribeToPlayer(user.uid, (p) => {
       setPlayer(p);
-      if (p && p.status !== "eliminated") {
-        router.push("/lobby"); // Should not be here if not eliminated
+      // If player status is no longer eliminated, redirect to lobby
+      if (p && p.status === "alive") {
+        router.push("/lobby");
       }
     });
-    return () => unsub();
+    const unsubGame = subscribeToGameState(setGameState);
+    return () => {
+      unsubPlayer();
+      unsubGame();
+    };
   }, [user, loading, router]);
 
+  const handleClaimWildCard = async () => {
+    if (!user) return;
+    setReviving(true);
+    try {
+      await updateDoc(doc(db, "players", user.uid), {
+        status: "alive",
+        currentSubmission: null,
+        submittedAt: null,
+      });
+      setRevived(true);
+      // The subscribeToPlayer callback above will detect status change and redirect
+    } catch (e) {
+      console.error(e);
+    }
+    setReviving(false);
+  };
+
   if (loading || !player) return <div className="min-h-screen bg-[#0a0a0f]" />;
+
+  const wildEntryOpen = gameState?.wildEntryOpen === true;
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-6 bg-[#0a0a0f] text-textDefault relative overflow-hidden">
@@ -54,19 +84,56 @@ export default function EliminatedPage() {
         <div className="border border-border bg-surface p-6 mt-8 space-y-4">
           <p className="font-mono text-xs text-textMuted uppercase tracking-widest border-b border-border pb-2">Final Statistics</p>
           <div className="flex justify-between">
-            <span className="text-textMuted font-mono">Your Number:</span>
-            <span className="text-textDefault font-mono">{player.currentSubmission ?? "—"}</span>
+            <span className="text-textMuted font-mono">Player:</span>
+            <span className="text-textDefault font-mono">{player.playerId}</span>
           </div>
           <div className="flex justify-between">
-             {/* If we stored target distance we could display it, otherwise omitted for brevity since it was shown on reveal */}
             <span className="text-textMuted font-mono">Status:</span>
-            <span className="text-primary font-mono font-bold tracking-widest uppercase">Deceased</span>
+            <span className="text-primary font-mono font-bold tracking-widest uppercase">Eliminated</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-textMuted font-mono">Points:</span>
+            <span className="text-textDefault font-mono">{player.points ?? 0}</span>
           </div>
         </div>
 
-        <div className="pt-12 space-y-8">
+        {/* Wild Card Re-Entry Section */}
+        <AnimatePresence>
+          {wildEntryOpen && !revived && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="border border-secondary/60 bg-secondary/10 p-6 space-y-4"
+            >
+              <div className="text-secondary text-2xl">⚡</div>
+              <p className="font-mono text-secondary text-xs uppercase tracking-widest font-bold">Wild Card Entry Open</p>
+              <p className="font-mono text-textMuted text-sm">
+                The admin has opened a Wild Card window. You can re-enter the game and rejoin as an alive player.
+              </p>
+              <button
+                onClick={handleClaimWildCard}
+                disabled={reviving}
+                className="w-full py-3 bg-secondary/20 border-2 border-secondary text-secondary font-mono tracking-widest uppercase transition-all hover:bg-secondary hover:text-background shadow-glow-gold disabled:opacity-50"
+              >
+                {reviving ? "Reviving..." : "⚡ CLAIM WILD CARD RE-ENTRY"}
+              </button>
+            </motion.div>
+          )}
+          {revived && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="border border-secondary bg-secondary/20 p-4 text-secondary font-mono text-sm uppercase tracking-widest animate-pulse"
+            >
+              ✓ Revived! Redirecting to lobby...
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <div className="pt-4 space-y-8">
           <p className="font-serif text-sm italic text-textMuted/60">
-            "The game does not forgive errors."
+            &quot;The game does not forgive errors.&quot;
           </p>
 
           <Link href="/admin/display" className="inline-block border border-textMuted/30 px-6 py-3 font-mono text-xs text-textMuted hover:text-textDefault hover:border-textDefault transition-colors uppercase tracking-widest">

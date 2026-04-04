@@ -184,12 +184,20 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        <button 
-          onClick={() => emergencyPauseToggle(gameState.emergencyPause)}
-          className={`${gameState.emergencyPause ? 'bg-primary text-white' : 'bg-primary/20 hover:bg-primary/50 text-primary'} border border-primary px-4 py-2 uppercase text-xs font-bold transition-colors shadow-glow-red`}
-        >
-          {gameState.emergencyPause ? "RESUME EVENT" : "EMERGENCY PAUSE"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => updateGameState({ wildEntryOpen: !gameState.wildEntryOpen })}
+            className={`${gameState.wildEntryOpen ? 'bg-secondary text-background font-bold shadow-glow-gold' : 'bg-secondary/20 hover:bg-secondary/40 text-secondary'} border border-secondary px-4 py-2 uppercase text-xs transition-colors`}
+          >
+            {gameState.wildEntryOpen ? "⚡ CLOSE WILD ENTRY" : "⚡ OPEN WILD ENTRY"}
+          </button>
+          <button 
+            onClick={() => emergencyPauseToggle(gameState.emergencyPause)}
+            className={`${gameState.emergencyPause ? 'bg-primary text-white' : 'bg-primary/20 hover:bg-primary/50 text-primary'} border border-primary px-4 py-2 uppercase text-xs font-bold transition-colors shadow-glow-red`}
+          >
+            {gameState.emergencyPause ? "RESUME EVENT" : "EMERGENCY PAUSE"}
+          </button>
+        </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">

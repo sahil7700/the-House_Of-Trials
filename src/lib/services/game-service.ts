@@ -53,6 +53,7 @@ export interface GameState {
   pendingEliminations: string[];
   displayMessage: string | null;
   emergencyPause: boolean;
+  wildEntryOpen: boolean; // admin can open late registration mid-game
 }
 
 // ==========================================

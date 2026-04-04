@@ -17,7 +17,8 @@ export const initializeGameState = async () => {
     results: null,
     pendingEliminations: [],
     displayMessage: null,
-    emergencyPause: false
+    emergencyPause: false,
+    wildEntryOpen: false
   };
   await setDoc(docRef, initialState, { merge: true });
 };

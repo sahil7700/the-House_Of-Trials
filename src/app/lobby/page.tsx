@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { subscribeToGameState, GameState } from "@/lib/services/game-service";
 import { PlayerData, subscribeToPlayer } from "@/lib/services/player-service";
+import { collection, onSnapshot, query } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { motion } from "framer-motion";
 
 const FLAVOUR_TEXTS = [
@@ -22,6 +24,8 @@ export default function LobbyPage() {
   const [player, setPlayer] = useState<PlayerData | null>(null);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [flavourText, setFlavourText] = useState(FLAVOUR_TEXTS[0]);
+  const [aliveCount, setAliveCount] = useState(0);
+  const [submittedCount, setSubmittedCount] = useState(0);
 
   useEffect(() => {
     if (authLoading) return;
@@ -43,9 +47,16 @@ export default function LobbyPage() {
       }
     });
 
+    const unsubPlayers = onSnapshot(query(collection(db, "players")), (snap) => {
+      const all = snap.docs.map(d => d.data() as PlayerData);
+      setAliveCount(all.filter(p => p.status === "alive").length);
+      setSubmittedCount(all.filter(p => p.status === "alive" && p.currentSubmission !== null).length);
+    });
+
     return () => {
       unsubPlayer();
       unsubGame();
+      unsubPlayers();
     };
   }, [user, authLoading, router]);
 
@@ -107,9 +118,22 @@ export default function LobbyPage() {
           <div className="pt-8">
             <p className="text-textMuted font-mono text-xs tracking-widest uppercase mb-2">Players Alive</p>
             <p className="font-serif text-6xl text-textDefault drop-shadow-[0_0_15px_rgba(232,232,240,0.3)]">
-              {gameState?.playersAlive ?? "—"}
+              {aliveCount}
             </p>
           </div>
+
+          {gameState?.phase === "active" && (
+            <div className="pt-4">
+              <p className="text-textMuted font-mono text-xs tracking-widest uppercase mb-1">Submissions</p>
+              <p className="font-serif text-2xl text-secondary">{submittedCount} / {aliveCount}</p>
+              <div className="w-48 mx-auto bg-surface border border-border h-1.5 mt-2 overflow-hidden">
+                <div
+                  className="h-full bg-secondary transition-all duration-500"
+                  style={{ width: `${aliveCount > 0 ? (submittedCount / aliveCount) * 100 : 0}%` }}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
       </div>

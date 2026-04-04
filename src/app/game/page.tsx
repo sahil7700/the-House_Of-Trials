@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { subscribeToGameState, subscribeToEventConfig, submitGameInput, GameState, EventConfig } from "@/lib/services/game-service";
-import { getPlayer, subscribeToPlayer, PlayerData } from "@/lib/services/player-service";
+import { subscribeToPlayer, PlayerData } from "@/lib/services/player-service";
+import { collection, onSnapshot, query } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { motion, AnimatePresence } from "framer-motion";
 
 // Dynamic Imports
@@ -24,6 +26,8 @@ export default function GameUI() {
   const [eventConfig, setEventConfig] = useState<EventConfig | null>(null);
   const [player, setPlayer] = useState<PlayerData | null>(null);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const [liveAliveCount, setLiveAliveCount] = useState(0);
+  const [liveSubmittedCount, setLiveSubmittedCount] = useState(0);
 
   useEffect(() => {
     if (authLoading) return;
@@ -36,10 +40,17 @@ export default function GameUI() {
     const unsubConfig = subscribeToEventConfig(setEventConfig);
     const unsubPlayer = subscribeToPlayer(user.uid, setPlayer);
 
+    const unsubPlayers = onSnapshot(query(collection(db, "players")), (snap) => {
+      const all = snap.docs.map(d => d.data() as PlayerData);
+      setLiveAliveCount(all.filter(p => p.status === "alive").length);
+      setLiveSubmittedCount(all.filter(p => p.status === "alive" && p.currentSubmission !== null).length);
+    });
+
     return () => {
       unsubGame();
       unsubConfig();
       unsubPlayer();
+      unsubPlayers();
     };
   }, [user, authLoading, router]);
 
@@ -138,12 +149,12 @@ export default function GameUI() {
         <div className="relative z-10 mb-4">
           <div className="flex justify-between text-[10px] uppercase tracking-widest text-textMuted mb-1">
             <span>Submissions</span>
-            <span>{gameState.submissionsCount ?? 0} / {gameState.playersAlive} Players</span>
+            <span>{liveSubmittedCount} / {liveAliveCount} Players</span>
           </div>
           <div className="w-full bg-surface border border-border h-1.5 overflow-hidden">
             <div
               className="h-full bg-secondary transition-all duration-500"
-              style={{ width: `${gameState.playersAlive > 0 ? ((gameState.submissionsCount ?? 0) / gameState.playersAlive) * 100 : 0}%` }}
+              style={{ width: `${liveAliveCount > 0 ? (liveSubmittedCount / liveAliveCount) * 100 : 0}%` }}
             />
           </div>
         </div>

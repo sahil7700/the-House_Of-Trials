@@ -133,6 +133,22 @@ export default function GameUI() {
         </div>
       </header>
 
+      {/* Submission Progress Bar — visible during active phase */}
+      {gameState.phase === "active" && (
+        <div className="relative z-10 mb-4">
+          <div className="flex justify-between text-[10px] uppercase tracking-widest text-textMuted mb-1">
+            <span>Submissions</span>
+            <span>{gameState.submissionsCount ?? 0} / {gameState.playersAlive} Players</span>
+          </div>
+          <div className="w-full bg-surface border border-border h-1.5 overflow-hidden">
+            <div
+              className="h-full bg-secondary transition-all duration-500"
+              style={{ width: `${gameState.playersAlive > 0 ? ((gameState.submissionsCount ?? 0) / gameState.playersAlive) * 100 : 0}%` }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Full screen status overlays */}
       <AnimatePresence>
         {gameState.emergencyPause && (

@@ -59,6 +59,23 @@ export default function AdminDashboard() {
     }
   }, [players, gameState]);
 
+  // Sync results to pending updates for orchestration
+  useEffect(() => {
+    if (gameState?.phase === "reveal" && gameState.results?.eliminatedPlayerIds) {
+      const eliminatedIds = gameState.results.eliminatedPlayerIds;
+      const fresh: Record<string, PlayerRoundUpdate> = {};
+      players.filter(p => p.status === "alive").forEach(p => {
+        const isEliminated = eliminatedIds.includes(p.id);
+        fresh[p.id] = {
+          uid: p.id,
+          status: isEliminated ? "eliminated" : "alive",
+          pointsDelta: isEliminated ? 0 : 10 // Default 10 pts for survival
+        };
+      });
+      setPendingUpdates(fresh);
+    }
+  }, [gameState?.phase, players.length]); // Depend on phase and players count
+
   if (authLoading) return <div className="p-8 font-mono text-textMuted bg-background min-h-screen">Verifying identity...</div>;
 
   if (!gameState || !eventConfig) {
@@ -176,11 +193,7 @@ export default function AdminDashboard() {
     setPendingUpdates(fresh);
   };
 
-  useEffect(() => {
-    if (gameState?.phase === "reveal" && gameState.results?.eliminatedPlayerIds) {
-      syncPendingUpdates(gameState.results.eliminatedPlayerIds);
-    }
-  }, [gameState?.phase]);
+
 
   const toggleElimination = (uid: string) => {
     setPendingUpdates(prev => ({

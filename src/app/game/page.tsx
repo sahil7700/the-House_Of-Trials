@@ -139,8 +139,8 @@ export default function GameUI() {
         )}
 
         <div className="text-right">
-          <span className="text-textMuted text-[10px] uppercase tracking-widest block">Slot {gameState.currentSlot}</span>
-          <span className="text-primary font-bold uppercase tracking-widest">{currentSlotConfig.gameId}</span>
+          <span className="text-textMuted text-[10px] uppercase tracking-widest block">{gameState.currentRoundTitle || `Slot ${gameState.currentSlot}`}</span>
+          <span className="text-primary font-bold uppercase tracking-widest">{gameState.currentGameId}</span>
         </div>
       </header>
 

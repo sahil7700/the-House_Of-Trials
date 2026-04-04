@@ -1,5 +1,5 @@
 import { db } from "@/lib/firebase";
-import { doc, updateDoc, setDoc, getDocs, collection, query, where, writeBatch } from "firebase/firestore";
+import { doc, updateDoc, setDoc, getDocs, collection, query, where, writeBatch, increment } from "firebase/firestore";
 import { GameState, EventConfig } from "./game-service";
 
 export const initializeGameState = async () => {
@@ -7,6 +7,7 @@ export const initializeGameState = async () => {
   const initialState: GameState = {
     currentSlot: 1,
     currentGameId: "A1",
+    currentRoundTitle: "Trial 1",
     phase: "lobby",
     timerDuration: 60,
     timerStartedAt: null,
@@ -96,4 +97,40 @@ export const startTimer = async (duration: number) => {
     timerDuration: duration,
     timerStartedAt: serverTimestamp()
   });
+};
+
+export interface PlayerRoundUpdate {
+  uid: string;
+  status: "alive" | "eliminated";
+  pointsDelta: number;
+}
+
+export const finalizeRoundResults = async (updates: PlayerRoundUpdate[]) => {
+  const batch = writeBatch(db);
+
+  for (const update of updates) {
+    const pRef = doc(db, "players", update.uid);
+    batch.update(pRef, {
+      status: update.status,
+      points: increment(update.pointsDelta),
+      currentSubmission: null,
+      submittedAt: null
+    });
+  }
+
+  // Set phase to standby after processing all updates
+  const gameStateRef = doc(db, "system", "gameState");
+  batch.update(gameStateRef, {
+    phase: "standby",
+    results: null,
+    displayMessage: "Round Finalized. Prepare for the next trial.",
+    submissionsCount: 0
+  });
+
+  await batch.commit();
+
+  // Recalc alive for safety
+  const qAlive = query(collection(db, "players"), where("status", "==", "alive"));
+  const snapAlive = await getDocs(qAlive);
+  await updateGameState({ playersAlive: snapAlive.size });
 };

@@ -42,6 +42,7 @@ export interface EventConfig {
 export interface GameState {
   currentSlot: number;
   currentGameId: string;
+  currentRoundTitle?: string; // dynamic title for orchestration
   phase: GamePhase;
   timerDuration: number;
   timerStartedAt: any | null;

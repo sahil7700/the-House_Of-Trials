@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { subscribeToGameState, subscribeToEventConfig, GameState, EventConfig, GamePhase } from "@/lib/services/game-service";
-import { updateGameState, startTimer, confirmEliminations, emergencyPauseToggle } from "@/lib/services/admin-service";
-import { collection, onSnapshot, query } from "firebase/firestore";
+import { updateGameState, startTimer, confirmEliminations, emergencyPauseToggle, finalizeRoundResults, PlayerRoundUpdate } from "@/lib/services/admin-service";
+import { collection, onSnapshot, query, doc, writeBatch, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { PlayerData } from "@/lib/services/player-service";
 
@@ -19,6 +19,12 @@ export default function AdminDashboard() {
   const [eventConfig, setEventConfig] = useState<EventConfig | null>(null);
   const [players, setPlayers] = useState<PlayerData[]>([]);
   const [calculating, setCalculating] = useState(false);
+  const [pendingUpdates, setPendingUpdates] = useState<Record<string, PlayerRoundUpdate>>({});
+  
+  // Next Round Config Draft
+  const [nextGameId, setNextGameId] = useState("A1");
+  const [nextGameTitle, setNextGameTitle] = useState("");
+  const [nextGameTimer, setNextGameTimer] = useState(60);
 
   useEffect(() => {
     if (authLoading) return;
@@ -111,7 +117,17 @@ export default function AdminDashboard() {
       }
 
       // Run Dynamic Calculator
-      const { results, eliminatedPlayerIds } = runGenericCalculator(submissions, currentSlotConfig);
+      // For dynamic orchestration, we might not have a formal SlotConfig in the DB.
+      // We'll use the one we found, or a default fallback based on the LIVE state.
+      const calcConfig = currentSlotConfig || {
+        gameId: gameState.currentGameId,
+        config: {
+          eliminationValue: 1, // default 1 person for A1/A3
+          gameSpecificConfig: {}
+        }
+      };
+
+      const { results, eliminatedPlayerIds } = runGenericCalculator(submissions, calcConfig as any);
 
       // Update GameState with results
       await updateGameState({
@@ -128,12 +144,91 @@ export default function AdminDashboard() {
     setCalculating(false);
   };
 
-  const handleConfirmElimination = async () => {
-    if (!gameState.results?.eliminatedPlayerIds) return;
-    if (confirm(`Confirm elimination of ${gameState.results.eliminatedPlayerIds.length} players?`)) {
-      await confirmEliminations(gameState.results.eliminatedPlayerIds);
-      setPhase("standby");
+  const handleFinalizeResults = async () => {
+    const updates = Object.values(pendingUpdates);
+    if (updates.length === 0) {
+      alert("No updates to process. Ensure calculation was run.");
+      return;
     }
+
+    if (confirm(`Finalize round and apply points/eliminations for ${updates.length} players?`)) {
+      setCalculating(true);
+      try {
+        await finalizeRoundResults(updates);
+        setPendingUpdates({});
+      } catch (e: any) {
+        alert("Error finalizing: " + e.message);
+      }
+      setCalculating(false);
+    }
+  };
+
+  const syncPendingUpdates = (eliminatedIds: string[]) => {
+    const fresh: Record<string, PlayerRoundUpdate> = {};
+    players.filter(p => p.status === "alive").forEach(p => {
+      const isEliminated = eliminatedIds.includes(p.id);
+      fresh[p.id] = {
+        uid: p.id,
+        status: isEliminated ? "eliminated" : "alive",
+        pointsDelta: isEliminated ? 0 : 10 // Default 10 pts for survival
+      };
+    });
+    setPendingUpdates(fresh);
+  };
+
+  useEffect(() => {
+    if (gameState?.phase === "reveal" && gameState.results?.eliminatedPlayerIds) {
+      syncPendingUpdates(gameState.results.eliminatedPlayerIds);
+    }
+  }, [gameState?.phase]);
+
+  const toggleElimination = (uid: string) => {
+    setPendingUpdates(prev => ({
+      ...prev,
+      [uid]: {
+        ...prev[uid],
+        status: prev[uid].status === "alive" ? "eliminated" : "alive"
+      }
+    }));
+  };
+
+  const updatePoints = (uid: string, delta: number) => {
+    setPendingUpdates(prev => ({
+      ...prev,
+      [uid]: {
+        ...prev[uid],
+        pointsDelta: delta
+      }
+    }));
+  };
+
+  const startDynamicRound = async () => {
+    if (!nextGameTitle) {
+      alert("Please enter a title for the round.");
+      return;
+    }
+    
+    setCalculating(true);
+    try {
+      await updateGameState({
+        currentGameId: nextGameId,
+        currentRoundTitle: nextGameTitle,
+        phase: "lobby",
+        timerDuration: nextGameTimer,
+        results: null,
+        submissionsCount: 0
+      });
+      // Clear player submissions
+      const snap = await getDocs(collection(db, "players"));
+      const batch = writeBatch(db);
+      snap.docs.forEach(d => batch.update(d.ref, { currentSubmission: null, submittedAt: null }));
+      await batch.commit();
+      
+      alert(`Round "${nextGameTitle}" started!`);
+    } catch (e: any) {
+      alert("Error starting round: " + e.message);
+    }
+    setCalculating(false);
   };
 
   const advanceToNextSlot = () => {
@@ -219,8 +314,9 @@ export default function AdminDashboard() {
         <div className="flex-1 p-6 overflow-auto bg-scanlines relative">
           <div className="w-full max-w-5xl mx-auto space-y-8 relative z-10 border border-border bg-background p-8 shadow-2xl">
               
-              <h2 className="font-serif text-3xl tracking-widest uppercase text-primary border-b border-border pb-4 drop-shadow-glow-red">
-                {currentSlotConfig?.gameName}
+              <h2 className="font-serif text-3xl tracking-widest uppercase text-primary border-b border-border pb-4 drop-shadow-glow-red flex justify-between items-center">
+                <span>{gameState.currentRoundTitle || currentSlotConfig?.gameName}</span>
+                <span className="text-xs text-textMuted font-mono">ID: {gameState.currentGameId}</span>
               </h2>
 
               <div className="flex gap-2 w-full text-[10px] sm:text-xs">
@@ -237,7 +333,9 @@ export default function AdminDashboard() {
               <section className="bg-surface border border-border p-6 min-h-[200px]">
                 {gameState.phase === "lobby" && (
                   <div className="flex flex-col items-center justify-center space-y-6 h-full p-4">
-                    <p className="text-sm text-textMuted text-center">Players are currently in the Waiting Lobby.<br/>Ready to start {currentSlotConfig?.gameName}?</p>
+                    <p className="text-sm text-textMuted text-center uppercase tracking-widest">
+                       Lobby: {gameState.currentRoundTitle}
+                    </p>
                     <button 
                        onClick={() => {
                           updateGameState({ 
@@ -245,11 +343,11 @@ export default function AdminDashboard() {
                             playersAlive: totalAlive,
                             submissionsCount: 0
                           });
-                          startTimer(currentSlotConfig?.config.timerSeconds || 60);
+                          startTimer(gameState.timerDuration || 60);
                        }}
                        className="bg-primary/20 border border-primary text-primary hover:bg-primary hover:text-white px-8 py-3 tracking-widest uppercase transition-colors shadow-glow-red"
                     >
-                      START GAME TIMER
+                      START ROUND TIMER
                     </button>
                   </div>
                 )}
@@ -293,52 +391,133 @@ export default function AdminDashboard() {
                 )}
 
                 {gameState.phase === "reveal" && (
-                   <div className="space-y-6">
-                      <p className="text-sm text-textMuted text-center">Calculations Complete. Reveal results to the Big Screen and Player phones?</p>
-                      
+                   <div className="space-y-8">
                       <div className="bg-background border border-border p-4 text-sm grid grid-cols-3 gap-4">
-                        <div className="col-span-3 text-center border-b border-border pb-2 text-xs uppercase text-secondary">Result Snapshot</div>
+                        <div className="col-span-3 text-center border-b border-border pb-2 text-xs uppercase text-secondary">Automation Snapshot</div>
                         <div className="text-center">
-                          <p className="text-textMuted text-[10px] uppercase">Eliminations Pending</p>
-                          <p className="text-primary text-xl font-bold">{gameState.results?.eliminatedPlayerIds?.length || 0}</p>
+                          <p className="text-textMuted text-[10px] uppercase">Suggestion</p>
+                          <p className="text-primary text-xl font-bold">{gameState.results?.eliminatedPlayerIds?.length || 0} dead</p>
                         </div>
                         <div className="text-center">
-                          <p className="text-textMuted text-[10px] uppercase">Average Driven</p>
-                          <p className="text-xl">{gameState.results?.average?.toFixed(2) ?? "N/A"}</p>
+                          <p className="text-textMuted text-[10px] uppercase">Avg/Metric</p>
+                          <p className="text-xl">{gameState.results?.average?.toFixed(2) ?? gameState.results?.majorityRange ?? "N/A"}</p>
                         </div>
                         <div className="text-center">
-                          <p className="text-textMuted text-[10px] uppercase">Target Hit</p>
+                          <p className="text-textMuted text-[10px] uppercase">Target</p>
                           <p className="text-xl text-secondary">{gameState.results?.target?.toFixed(2) ?? "N/A"}</p>
                         </div>
                       </div>
 
-                      <div className="flex gap-4 justify-center">
-                        <button onClick={() => setPhase("confirm")} className="bg-primary/20 border border-primary text-primary hover:bg-primary hover:text-white px-8 py-3 tracking-widest uppercase transition-colors shadow-glow-red">
-                          Proceed to Confirmation
+                      <div className="space-y-4">
+                        <h3 className="text-xs uppercase tracking-widest text-textMuted border-b border-border pb-2">Manual Override Table</h3>
+                        <div className="overflow-x-auto max-h-[400px] border border-border">
+                          <table className="w-full text-[10px] uppercase tracking-tighter">
+                            <thead className="bg-surface text-textMuted">
+                              <tr>
+                                <th className="p-2 text-left">Player</th>
+                                <th className="p-2">Input</th>
+                                <th className="p-2">Points</th>
+                                <th className="p-2 text-right">Action</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border">
+                              {players.filter(p => p.status === "alive").map(p => {
+                                const update = pendingUpdates[p.id];
+                                if (!update) return null;
+                                return (
+                                  <tr key={p.id} className={update.status === "eliminated" ? "bg-primary/10" : ""}>
+                                    <td className="p-2 font-bold">{p.name} <span className="opacity-50 font-normal">({p.playerId})</span></td>
+                                    <td className="p-2 text-center text-secondary font-mono">{p.currentSubmission ?? "—"}</td>
+                                    <td className="p-2 text-center">
+                                      <input 
+                                        type="number" 
+                                        className="w-12 bg-background border border-border text-center p-1"
+                                        value={update.pointsDelta}
+                                        onChange={(e) => updatePoints(p.id, parseInt(e.target.value) || 0)}
+                                      />
+                                    </td>
+                                    <td className="p-2 text-right">
+                                      <button 
+                                        onClick={() => toggleElimination(p.id)}
+                                        className={`px-3 py-1 border text-[8px] tracking-widest ${update.status === "eliminated" ? "bg-primary text-white border-primary" : "border-textMuted text-textMuted"}`}
+                                      >
+                                        {update.status === "eliminated" ? "ELIMINATED" : "KEEP ALIVE"}
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-4 justify-center pt-4">
+                        <button onClick={handleFinalizeResults} disabled={calculating} className="bg-primary/20 border border-primary text-primary hover:bg-primary hover:text-white px-8 py-3 tracking-widest uppercase transition-colors shadow-glow-red">
+                          {calculating ? "Processing Batch..." : "FINALIZE & COMMIT ROUND"}
                         </button>
                       </div>
                    </div>
                 )}
 
-                {gameState.phase === "confirm" && (
-                  <div className="flex flex-col items-center justify-center space-y-6 h-full p-4 text-center">
-                    <p className="text-primary tracking-widest uppercase">DANGER ZONE</p>
-                    <p className="text-sm text-textMuted max-w-sm">By pressing confirm, {gameState.results?.eliminatedPlayerIds?.length || 0} players will be permanently marked as eliminated. This cannot be undone automatically.</p>
-                    <button 
-                       onClick={handleConfirmElimination}
-                       className="bg-primary text-white border border-primary font-bold px-8 py-3 tracking-widest uppercase transition-colors shadow-glow-red"
-                    >
-                      EXECUTE ELIMINATIONS
-                    </button>
-                  </div>
-                )}
+
                 
                 {gameState.phase === "standby" && (
-                   <div className="flex flex-col items-center justify-center space-y-6 h-full p-4">
-                     <p className="text-sm text-textMuted text-center">Round Completed.</p>
-                     <button onClick={advanceToNextSlot} className="bg-secondary/20 border border-secondary text-secondary hover:bg-secondary hover:text-background px-8 py-3 tracking-widest uppercase transition-colors shadow-glow-gold">
-                       Advance Sequence to Slot {gameState.currentSlot + 1}
-                     </button>
+                   <div className="flex flex-col items-center space-y-8 h-full p-4">
+                     <div className="text-center space-y-2">
+                        <h3 className="text-secondary tracking-widest uppercase shadow-glow-gold">Prepare Round {gameState.currentSlot}</h3>
+                        <p className="text-[10px] text-textMuted font-mono">Create the next trial on the spot</p>
+                     </div>
+
+                     <div className="w-full max-w-md grid grid-cols-2 gap-4 text-xs">
+                        <div className="col-span-2 space-y-2">
+                          <label className="text-[10px] text-textMuted uppercase tracking-widest">Select Game Type</label>
+                          <select 
+                            value={nextGameId} 
+                            onChange={(e) => setNextGameId(e.target.value)}
+                            className="w-full bg-surface border border-border p-3 text-textDefault focus:border-secondary outline-none transition-colors"
+                          >
+                            <option value="A1">A1: Majority Trap (Numerical)</option>
+                            <option value="A2">A2: Range Minority</option>
+                            <option value="A3">A3: Sequential Pair Elimination</option>
+                            <option value="A4">A4: Weighted Ranking</option>
+                            <option value="B7">B7: Threshold Route Choice</option>
+                            <option value="C10">C10: Top Percentage Elimination</option>
+                            <option value="OFFLINE">Offline: Manual/Physical Trial</option>
+                          </select>
+                        </div>
+
+                        <div className="col-span-2 space-y-2">
+                          <label className="text-[10px] text-textMuted uppercase tracking-widest">Custom Round Title</label>
+                          <input 
+                            type="text"
+                            placeholder="e.g. The Hunger Games"
+                            value={nextGameTitle}
+                            onChange={(e) => setNextGameTitle(e.target.value)}
+                            className="w-full bg-surface border border-border p-3 text-textDefault focus:border-secondary outline-none transition-colors"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] text-textMuted uppercase tracking-widest">Timer (sec)</label>
+                          <input 
+                            type="number"
+                            value={nextGameTimer}
+                            onChange={(e) => setNextGameTimer(parseInt(e.target.value) || 0)}
+                            className="w-full bg-surface border border-border p-3 text-textDefault focus:border-secondary outline-none transition-colors"
+                          />
+                        </div>
+
+                        <div className="flex items-end">
+                           <button 
+                             onClick={startDynamicRound}
+                             disabled={calculating}
+                             className="w-full bg-secondary/20 border border-secondary text-secondary hover:bg-secondary hover:text-background p-3 tracking-widest uppercase transition-colors shadow-glow-gold font-bold"
+                           >
+                             {calculating ? "Initializing..." : "START THIS ROUND"}
+                           </button>
+                        </div>
+                     </div>
                    </div>
                 )}
               </section>

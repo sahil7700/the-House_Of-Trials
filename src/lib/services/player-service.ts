@@ -25,11 +25,18 @@ export const registerPlayer = async (name: string, college: string, phone: strin
   }
   const uid = auth.currentUser!.uid;
 
-  // 2. Check if already registered
+  // 2. Check if already registered or if name is taken
   const docRef = doc(db, "players", uid);
   const docSnap = await getDoc(docRef);
   if (docSnap.exists()) {
     return docSnap.data() as PlayerData;
+  }
+
+  // 2.5 Ensure name is unique
+  const nameQuery = query(collection(db, "players"), where("name", "==", name));
+  const nameSnap = await getDocs(nameQuery);
+  if (!nameSnap.empty) {
+    throw new Error("A player with this name already exists. Please choose a slightly different name.");
   }
 
   // 3. Generate unique 4 digit ID (rough uniqueness check can be skipped for prototype)
@@ -52,9 +59,10 @@ export const registerPlayer = async (name: string, college: string, phone: strin
     name,
     college,
     phone,
-    status: "waiting",
+    status: "alive",
     points: 0,
     gamesPlayed: 0,
+
     gamesWon: 0,
     joinedAt: serverTimestamp(),
     currentSubmission: null,

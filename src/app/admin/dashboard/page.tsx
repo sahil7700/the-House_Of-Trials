@@ -76,20 +76,29 @@ export default function AdminDashboard() {
     setPhase("calculating");
     try {
       const { runGenericCalculator } = await import("@/app/api/game/calculate/calculators");
-      const { getDocs, query, collection, where } = await import("firebase/firestore");
       
       if (!currentSlotConfig) {
         throw new Error("Invalid slot config");
       }
 
-      // Fetch all submissions for current slot
-      const q = query(collection(db, "submissions"), where("slotNumber", "==", gameState.currentSlot));
-      const querySnapshot = await getDocs(q);
-      
-      const submissions = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      // Build submissions from the already-loaded players state (avoids querying
+      // the submissions collection which the admin may not have read access to).
+      // We use 'alive' players who have a non-null currentSubmission.
+      const submissions = players
+        .filter(p => p.status === "alive" && p.currentSubmission !== null && p.currentSubmission !== undefined)
+        .map(p => ({
+          id: p.id,
+          playerId: p.id,
+          slotNumber: gameState.currentSlot,
+          value: p.currentSubmission
+        }));
+
+      if (submissions.length === 0) {
+        // No submissions — just move to reveal with empty result
+        await updateGameState({ results: { eliminatedPlayerIds: [] }, phase: "reveal" });
+        setCalculating(false);
+        return;
+      }
 
       // Run Dynamic Calculator
       const { results, eliminatedPlayerIds } = runGenericCalculator(submissions, currentSlotConfig);
@@ -102,6 +111,8 @@ export default function AdminDashboard() {
       
     } catch (e: any) {
       console.error("Calculate Error:", e);
+      // Reset phase back to locked so admin can retry
+      await updateGameState({ phase: "locked" });
       alert("Failed to calculate: " + e.message);
     }
     setCalculating(false);

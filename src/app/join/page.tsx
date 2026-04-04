@@ -26,7 +26,7 @@ export default function JoinPage() {
       router.push("/lobby");
     } catch (err: any) {
       console.error(err);
-      setError("Failed to register. Are your environment variables set?");
+      setError(err.message || "Failed to register. Please try again.");
       setLoading(false);
     }
   };

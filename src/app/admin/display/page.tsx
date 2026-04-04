@@ -51,7 +51,7 @@ export default function AdminDisplay() {
         <div className="space-y-2">
           <h1 className="text-4xl font-serif tracking-widest uppercase text-textDefault drop-shadow-[0_0_10px_rgba(232,232,240,0.5)]">House of Trials</h1>
           <p className="text-xl font-mono text-secondary tracking-widest uppercase shadow-glow-gold">
-            Slot {gameState.currentSlot} <span className="opacity-50 mx-2">|</span> Game {gameState.currentGameId}
+            {gameState.currentRoundTitle || `Slot ${gameState.currentSlot}`} <span className="opacity-50 mx-2">|</span> Game {gameState.currentGameId}
           </p>
         </div>
         
@@ -117,17 +117,27 @@ export default function AdminDisplay() {
               initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 1 }}
               className="w-full text-center space-y-16"
             >
-              <h2 className="text-5xl font-serif tracking-widest uppercase text-secondary drop-shadow-glow-gold mb-12">Results</h2>
+              <h2 className="text-5xl font-serif tracking-widest uppercase text-secondary drop-shadow-glow-gold mb-12">Results: {gameState.currentRoundTitle}</h2>
               
               <div className="flex justify-center gap-24 font-mono">
-                <div className="text-center">
-                  <p className="text-2xl text-textMuted uppercase tracking-widest mb-4">Average</p>
-                  <p className="text-6xl text-textDefault">{gameState.results?.average.toFixed(2)}</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-2xl text-textMuted uppercase tracking-widest mb-4">Target (2/3)</p>
-                  <p className="text-6xl text-secondary">{gameState.results?.target.toFixed(2)}</p>
-                </div>
+                {gameState.results?.average !== undefined && (
+                  <div className="text-center">
+                    <p className="text-2xl text-textMuted uppercase tracking-widest mb-4">Average</p>
+                    <p className="text-6xl text-textDefault">{gameState.results.average.toFixed(2)}</p>
+                  </div>
+                )}
+                {gameState.results?.target !== undefined && (
+                  <div className="text-center">
+                    <p className="text-2xl text-textMuted uppercase tracking-widest mb-4">Target</p>
+                    <p className="text-6xl text-secondary">{gameState.results.target.toFixed(2)}</p>
+                  </div>
+                )}
+                {gameState.results?.majorityRange && (
+                  <div className="text-center">
+                    <p className="text-2xl text-textMuted uppercase tracking-widest mb-4">Majority</p>
+                    <p className="text-6xl text-primary">{gameState.results.majorityRange}</p>
+                  </div>
+                )}
               </div>
 
               <motion.div 

@@ -74,8 +74,8 @@ export default function LobbyPage() {
   const getStatusMessage = () => {
     if (!gameState) return "System offline.";
     if (gameState.phase === "standby") return gameState.displayMessage || "Stand by. Do not close this window.";
-    if (gameState.phase === "lobby") return "Waiting for players to join...";
-    return "Game starting soon — get ready";
+    if (gameState.phase === "lobby") return gameState.currentRoundTitle ? `Waiting for: ${gameState.currentRoundTitle}` : "Waiting for players to join...";
+    return `Preparing: ${gameState.currentRoundTitle || "Next Trial"}`;
   };
 
   return (

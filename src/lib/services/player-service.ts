@@ -1,5 +1,5 @@
 import { db, auth } from "@/lib/firebase";
-import { doc, setDoc, getDoc, serverTimestamp, collection, query, where, getDocs } from "firebase/firestore";
+import { doc, setDoc, getDoc, serverTimestamp, collection, query, where, getDocs, onSnapshot } from "firebase/firestore";
 import { signInAnonymously } from "firebase/auth";
 
 export interface PlayerData {
@@ -9,10 +9,14 @@ export interface PlayerData {
   college: string;
   phone: string;
   status: "waiting" | "alive" | "eliminated" | "winner";
+  points: number; // accumulated across all games
+  gamesPlayed: number;
+  gamesWon: number;
   joinedAt: any;
-  currentSubmission: number | null;
+  currentSubmission: any | null; // useful for dashboard live view
   submittedAt: any | null;
 }
+
 
 export const registerPlayer = async (name: string, college: string, phone: string) => {
   // 1. Ensure signed in anonymously
@@ -49,6 +53,9 @@ export const registerPlayer = async (name: string, college: string, phone: strin
     college,
     phone,
     status: "waiting",
+    points: 0,
+    gamesPlayed: 0,
+    gamesWon: 0,
     joinedAt: serverTimestamp(),
     currentSubmission: null,
     submittedAt: null,
@@ -71,4 +78,15 @@ export const getPlayer = async (uid: string): Promise<PlayerData | null> => {
     return docSnap.data() as PlayerData;
   }
   return null;
+};
+
+export const subscribeToPlayer = (uid: string, callback: (player: PlayerData | null) => void) => {
+  const docRef = doc(db, "players", uid);
+  return onSnapshot(docRef, (docSnap: any) => {
+    if (docSnap.exists()) {
+      callback(docSnap.data() as PlayerData);
+    } else {
+      callback(null);
+    }
+  });
 };

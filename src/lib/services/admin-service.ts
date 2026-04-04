@@ -1,22 +1,47 @@
 import { db } from "@/lib/firebase";
 import { doc, updateDoc, setDoc, getDocs, collection, query, where, writeBatch } from "firebase/firestore";
-import { GameState } from "./game-service";
+import { GameState, EventConfig } from "./game-service";
 
 export const initializeGameState = async () => {
   const docRef = doc(db, "system", "gameState");
   const initialState: GameState = {
-    currentGame: 2, // Defaulting to 2/3 average game
-    currentRound: 1,
+    currentSlot: 1,
+    currentGameId: "A1",
     phase: "lobby",
     timerDuration: 60,
     timerStartedAt: null,
     timerPaused: false,
     playersAlive: 0,
-    totalPlayers: 0,
+    totalRegistered: 0,
+    submissionsCount: 0,
     results: null,
-    displayMessage: null
+    pendingEliminations: [],
+    displayMessage: null,
+    emergencyPause: false
   };
   await setDoc(docRef, initialState, { merge: true });
+};
+
+export const saveEventConfig = async (config: EventConfig) => {
+  const docRef = doc(db, "system", "eventConfig");
+  await setDoc(docRef, config);
+};
+
+export const nukeDatabase = async () => {
+  const batch = writeBatch(db);
+  
+  // Nuke Players
+  const pSnap = await getDocs(collection(db, "players"));
+  pSnap.forEach((d) => batch.delete(d.ref));
+  
+  // Nuke Submissions
+  const sSnap = await getDocs(collection(db, "submissions"));
+  sSnap.forEach((d) => batch.delete(d.ref));
+  
+  await batch.commit();
+
+  // Reset GameState
+  await initializeGameState();
 };
 
 export const updateGameState = async (updates: Partial<GameState>) => {
@@ -24,31 +49,27 @@ export const updateGameState = async (updates: Partial<GameState>) => {
   await updateDoc(docRef, updates);
 };
 
-export const emergencyPause = async () => {
+export const emergencyPauseToggle = async (currentState: boolean) => {
   await updateGameState({
-    phase: "standby",
-    displayMessage: "Emergency Pause. Stand by."
+    emergencyPause: !currentState,
+    displayMessage: !currentState ? "Emergency Pause. Stand by." : null
   });
 };
 
 export const confirmEliminations = async (playerIds: string[]) => {
   const batch = writeBatch(db);
-  let newlyEliminated = 0;
 
   for (const uid of playerIds) {
     const pRef = doc(db, "players", uid);
     batch.update(pRef, { status: "eliminated" });
-    newlyEliminated++;
   }
 
-  // Also decrement players alive in gameState
-  // Need to use transaction or just recalculate it later, but simple update for now:
   await batch.commit();
 
   // Simple recalc of alive
   const q = query(collection(db, "players"), where("status", "==", "alive"));
   const snap = await getDocs(q);
-  await updateGameState({ playersAlive: snap.size });
+  await updateGameState({ playersAlive: snap.size, pendingEliminations: [] });
 };
 
 export const startTimer = async (duration: number) => {

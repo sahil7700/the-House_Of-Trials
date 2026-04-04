@@ -4,8 +4,7 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { subscribeToPlayer } from "@/lib/services/game-service";
-import { PlayerData } from "@/lib/services/player-service";
+import { PlayerData, subscribeToPlayer } from "@/lib/services/player-service";
 import { useRouter } from "next/navigation";
 
 export default function EliminatedPage() {

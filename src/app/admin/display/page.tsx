@@ -51,7 +51,7 @@ export default function AdminDisplay() {
         <div className="space-y-2">
           <h1 className="text-4xl font-serif tracking-widest uppercase text-textDefault drop-shadow-[0_0_10px_rgba(232,232,240,0.5)]">House of Trials</h1>
           <p className="text-xl font-mono text-secondary tracking-widest uppercase shadow-glow-gold">
-            Round {gameState.currentRound} <span className="opacity-50 mx-2">|</span> Game {gameState.currentGame}
+            Slot {gameState.currentSlot} <span className="opacity-50 mx-2">|</span> Game {gameState.currentGameId}
           </p>
         </div>
         

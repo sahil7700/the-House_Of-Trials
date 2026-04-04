@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { subscribeToPlayer, subscribeToGameState, GameState } from "@/lib/services/game-service";
-import { PlayerData } from "@/lib/services/player-service";
+import { subscribeToGameState, GameState } from "@/lib/services/game-service";
+import { PlayerData, subscribeToPlayer } from "@/lib/services/player-service";
 import { motion } from "framer-motion";
 
 const FLAVOUR_TEXTS = [

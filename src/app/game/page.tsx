@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import PostGameTracker from "./components/PostGameTracker";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { subscribeToGameState, subscribeToEventConfig, submitGameInput, GameState, EventConfig } from "@/lib/services/game-service";
@@ -19,6 +20,8 @@ import GameB7 from "./components/GameB7";
 import GameB8 from "./components/GameB8";
 import GameC9 from "./components/GameC9";
 import GameC10 from "./components/GameC10";
+import GameLemons from "./components/GameLemons";
+import GameSilence from "./components/GameSilence";
 import OfflineGame from "./components/OfflineGame";
 
 export default function GameUI() {
@@ -57,6 +60,9 @@ export default function GameUI() {
     };
   }, [user, authLoading, router]);
 
+  // Single-fire lock ref for auto-submit triggers
+  const autoLockFiredRound = useRef<number>(-1);
+
   useEffect(() => {
     if (gameState?.phase === "lobby" || gameState?.phase === "standby") {
       router.push("/lobby");
@@ -67,7 +73,7 @@ export default function GameUI() {
   }, [gameState?.phase, player?.status, router]);
 
   useEffect(() => {
-    if (!gameState || !["active", "open_a", "open_b"].includes(gameState.phase) || !gameState.timerStartedAt) {
+    if (!gameState || !["active", "active_a", "active_b", "open_a", "open_b"].includes(gameState.phase) || !gameState.timerStartedAt) {
       setTimeLeft(null);
       return;
     }
@@ -81,6 +87,13 @@ export default function GameUI() {
 
       if (remaining === 0) {
         clearInterval(interval);
+        if (autoLockFiredRound.current !== gameState.currentSlot) {
+           autoLockFiredRound.current = gameState.currentSlot;
+           fetch('/api/game/auto-lock', {
+              method: 'POST',
+              body: JSON.stringify({ slotNumber: gameState.currentSlot, gameId: gameState.currentGameId })
+           }).catch(e => console.error("Auto lock failed:", e));
+        }
       }
     }, 500);
 
@@ -128,6 +141,8 @@ export default function GameUI() {
        case "B8": return <GameB8 {...commonProps} />;
        case "C9": return <GameC9 {...commonProps} />;
        case "C10": return <GameC10 {...commonProps} />;
+       case "LEMONS": return <GameLemons playerId={player.id} gameState={gameState} isLocked={isLocked} />;
+       case "SILENCE": return <GameSilence {...commonProps} />;
        default: return <OfflineGame isLocked={isLocked} gameName={gameState?.currentRoundTitle || currentSlotConfig?.gameName || "Physical Trial"} />;
      }
   };
@@ -144,7 +159,7 @@ export default function GameUI() {
           <span className="text-textDefault block truncate max-w-[150px]">{player.name}</span>
         </div>
 
-        {timeLeft !== null && ["active", "open_a", "open_b"].includes(gameState.phase) && (
+        {timeLeft !== null && ["active", "active_a", "active_b", "open_a", "open_b"].includes(gameState.phase) && (
           <div className="text-center">
              <span className={`text-4xl font-bold font-mono tracking-widest ${timeLeft <= 5 ? "text-primary animate-pulse" : "text-textDefault"}`}>
                {timeLeft < 10 ? `0${timeLeft}` : timeLeft}
@@ -160,7 +175,7 @@ export default function GameUI() {
       </header>
 
       {/* Submission Progress Bar — visible during active phase */}
-      {["active", "open_a", "open_b"].includes(gameState.phase) && (
+      {["active", "active_a", "active_b", "open_a", "open_b"].includes(gameState.phase) && (
         <div className="relative z-10 mb-4">
           <div className="flex justify-between text-[10px] uppercase tracking-widest text-textMuted mb-1">
             <span>Submissions</span>
@@ -245,7 +260,9 @@ export default function GameUI() {
               exit={{ opacity: 0, y: -20 }}
               className="w-full"
             >
-              {renderGameLogic()}
+              {gameState.phase === "confirm" ? (
+                <PostGameTracker gameState={gameState} player={player} />
+              ) : renderGameLogic()}
             </motion.div>
          </AnimatePresence>
       </div>

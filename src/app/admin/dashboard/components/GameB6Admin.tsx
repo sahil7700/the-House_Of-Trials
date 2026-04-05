@@ -42,10 +42,36 @@ export default function GameB6Admin({ gameState, players, onUpdateGameState }: P
   const gsc = (gameState as any).gameSpecificConfig || {};
   const currentRevealStep = gsc.revealStep || 0;
   const isRevealPhase = gameState.phase === "reveal" || gameState.phase === "confirm";
+  const isLobby = gameState.phase === "lobby";
 
   return (
     <div className="w-full space-y-6">
-       <div className="border border-border bg-surface p-4 grid grid-cols-4 gap-4 text-center">
+       {isLobby && (
+          <div className="w-full bg-secondary/10 border border-secondary p-6 text-center">
+             <button 
+                onClick={() => {
+                   if (onUpdateGameState) {
+                      import("firebase/firestore").then(({ serverTimestamp }) => {
+                         onUpdateGameState({ 
+                            phase: "active", 
+                            timerStartedAt: serverTimestamp() as any,
+                            submissionsCount: 0,
+                            playersAlive: alivePlayers.length
+                         });
+                      });
+                   }
+                }}
+                className="w-full py-4 text-xl bg-secondary text-background font-bold tracking-widest uppercase hover:bg-white transition-colors"
+             >
+                OPEN BIDDING (START GAME)
+             </button>
+             {alivePlayers.length === 0 && <p className="text-secondary text-xs mt-2">Warning: 0 players alive in the lobby.</p>}
+          </div>
+       )}
+
+       {!isLobby && (
+          <>
+             <div className="border border-border bg-surface p-4 grid grid-cols-4 gap-4 text-center">
           <div><p className="text-[10px] text-textMuted uppercase mb-1">Submissions</p><p className="text-xl">{submissions.length} / {alivePlayers.length}</p></div>
           <div><p className="text-[10px] text-textMuted uppercase mb-1">Average Bid</p><p className="text-xl font-bold">{avgContent.toFixed(1)}</p></div>
           <div><p className="text-[10px] text-primary uppercase mb-1">Lowest</p><p className="text-xl text-primary font-bold">{lowest ?? '—'}</p></div>
@@ -112,6 +138,8 @@ export default function GameB6Admin({ gameState, players, onUpdateGameState }: P
              ))}
            </div>
          </div>
+       )}
+          </>
        )}
     </div>
   );

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
-import { subscribeToGameState, subscribeToEventConfig, GameState, EventConfig, GamePhase } from "@/lib/services/game-service";
+import { subscribeToGameState, subscribeToEventConfig, GameState, EventConfig, GamePhase, GameSlotConfig } from "@/lib/services/game-service";
 import { updateGameState, startTimer, confirmEliminations, emergencyPauseToggle, finalizeRoundResults, PlayerRoundUpdate, resetToSlotOne } from "@/lib/services/admin-service";
 import { collection, onSnapshot, query, doc, writeBatch, getDocs, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -39,6 +39,24 @@ export default function AdminDashboard() {
   // C10 config
   const [nextC10Sequence, setNextC10Sequence] = useState<number[]>([]);
   const [c10DragSrc, setC10DragSrc] = useState<number | null>(null);
+
+  // V3 Architecture: State A - Inline Game Picker
+  const [pickerSelectedGame, setPickerSelectedGame] = useState<string | null>(null);
+
+  const GAME_LIBRARY = [
+    { id: "A1", name: "Majority Trap (2/3 Average)", category: "Web", desc: "Guess 2/3 of the average." },
+    { id: "A2", name: "Minority Trap (Range Hunter)", category: "Web", desc: "Select the least popular range." },
+    { id: "A3", name: "Traveler's Dilemma", category: "Web", desc: "Low bid wins with penalty offsets." },
+    { id: "A4", name: "Borda Sabotage", category: "Web", desc: "Four-choice vulnerability polling." },
+    { id: "B5", name: "Black Hole (The Grid)", category: "Physical", desc: "Solve the grid pyramid locally." },
+    { id: "B7", name: "Braess Paradox", category: "Web", desc: "Route 1 vs slow Route 2 threshold." },
+    { id: "B8", name: "Information Cascade", category: "Web", desc: "Trust your signal vs Fake Majority." },
+    { id: "C10", name: "Peak Finder", category: "Web", desc: "Position correctly on the curve." },
+    { id: "B6", name: "Bidding Survival", category: "Web", desc: "Auction style point elimination." },
+    { id: "C9", name: "Sequence Match", category: "Web", desc: "3-digit asymmetric sequence pairing." },
+    { id: "LEMONS", name: "Market of Lemons", category: "Hybrid", desc: "Physical negotiation web trading." },
+    { id: "SILENCE", name: "Pluralistic Silence", category: "Psychological", desc: "Visual memory fake-out pressure." },
+  ];
 
   const generateC10Sequence = () => {
     // Build a realistic peak-finder sequence: low start, peak near position 10, taper off
@@ -131,13 +149,20 @@ export default function AdminDashboard() {
         <div className="z-10 text-center flex flex-col items-center space-y-6">
           <p className="text-xl text-primary animate-pulse tracking-widest uppercase">System Uninitialized</p>
           <p className="text-sm text-textMuted max-w-sm">
-            Event configuration is missing or invalid. Please configure the games in the Game Builder first.
+            Event configuration is missing or invalid. Please initialize the House of Trials empty framework.
           </p>
           <button 
-            onClick={() => router.push("/admin/builder")}
+            onClick={async () => {
+               const batch = writeBatch(db);
+               batch.set(doc(db, "system", "eventConfig"), { eventName: "Live Event", totalSlots: 100, slots: [] });
+               batch.set(doc(db, "system", "gameState"), { 
+                  currentSlot: 1, phase: "lobby", currentGameId: "", playersAlive: 0, submissionsCount: 0, timerDuration: 60, timerStartedAt: null, phaseEndsAt: null, displayMessage: null, pendingEliminations: [], results: null, timerPaused: false, wildEntryOpen: false, roundType: "standard", winnerId: null, gameHistory: {}
+               });
+               await batch.commit();
+            }}
             className="px-6 py-3 bg-primary/20 text-primary border border-primary hover:bg-primary hover:text-white transition-colors tracking-widest uppercase shadow-glow-red"
           >
-            Go to Game Builder
+            INITIALIZE FRAMEWORK
           </button>
         </div>
       </div>
@@ -534,12 +559,76 @@ export default function AdminDashboard() {
               </div>
 
               <section className="bg-surface border border-border p-6 min-h-[200px]">
-                {gameState.phase === "lobby" && (
+                {!currentSlotConfig && (
+                   <div className="space-y-6">
+                      <div className="text-center space-y-2 mb-8">
+                         <h3 className="text-xl uppercase tracking-widest text-primary">State A — Empty Slot {gameState.currentSlot}</h3>
+                         <p className="text-xs text-textMuted uppercase tracking-widest">Select a game from the library to configure and activate.</p>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                         {GAME_LIBRARY.map(game => (
+                            <button
+                               key={game.id}
+                               onClick={() => setPickerSelectedGame(game.id)}
+                               className={`p-4 border text-left flex flex-col items-start transition-all ${pickerSelectedGame === game.id ? 'bg-secondary/20 border-secondary shadow-glow-gold' : 'bg-background border-border hover:border-secondary/50'}`}
+                            >
+                               <span className="text-[10px] text-secondary font-bold uppercase mb-2">{game.category} • {game.id}</span>
+                               <span className="text-sm font-bold truncate w-full mb-1">{game.name}</span>
+                               <span className="text-[10px] text-textMuted line-clamp-2 leading-tight">{game.desc}</span>
+                            </button>
+                         ))}
+                      </div>
+
+                      {pickerSelectedGame && (
+                         <div className="mt-8 p-6 border border-secondary bg-secondary/5 space-y-4">
+                            <h4 className="text-sm text-secondary uppercase tracking-widest border-b border-border pb-2">Initialize Slot Configuration</h4>
+                            <div className="flex items-center justify-between bg-background border border-border p-4">
+                               <span className="text-xs text-textMuted uppercase">Initial Timer Duration (Seconds)</span>
+                               <input type="number" min="10" value={nextGameTimer} onChange={e => setNextGameTimer(parseInt(e.target.value)||60)} className="bg-surface border border-border px-3 py-1 w-24 outline-none focus:border-secondary text-right" />
+                            </div>
+                            <button
+                               onClick={async () => {
+                                  const gameDef = GAME_LIBRARY.find(g => g.id === pickerSelectedGame)!;
+                                  const newSlot: GameSlotConfig = {
+                                     slotNumber: gameState.currentSlot,
+                                     gameId: gameDef.id,
+                                     gameName: gameDef.name,
+                                     status: "pending",
+                                     config: { timerSeconds: nextGameTimer, pointsFirst: 30, pointsSecond: 20, pointsThird: 10, pointsSafe: 0, pointsEliminated: -30, eliminationMode: "percentage", eliminationValue: 20, advancementCount: 1, tieBreaker: "admin", penaltyNoSubmit: -10, bonusTopN: 0, visibleToPlayers: true, gameSpecificConfig: {} }
+                                  };
+                                  const slots = [...eventConfig.slots, newSlot].sort((a,b) => a.slotNumber - b.slotNumber);
+                                  
+                                  const batch = writeBatch(db);
+                                  batch.update(doc(db, "system", "eventConfig"), { slots });
+                                  batch.update(doc(db, "system", "gameState"), { currentGameId: gameDef.id, currentRoundTitle: gameDef.name });
+                                  await batch.commit();
+                               }}
+                               className="w-full bg-secondary/80 text-background py-4 font-bold tracking-widest uppercase hover:bg-white shadow-glow-gold transition-colors text-sm"
+                            >
+                               Configure & Activate Slot {gameState.currentSlot}
+                            </button>
+                         </div>
+                      )}
+                   </div>
+                )}
+
+                {currentSlotConfig && gameState.phase === "lobby" && (
                   <div className="flex flex-col items-center justify-center space-y-6 w-full p-4">
-                    <p className="text-sm text-textMuted text-center uppercase tracking-widest">
-                       Lobby: {gameState.currentRoundTitle}
-                    </p>
-                    
+                    <div className="flex flex-col items-center justify-center space-y-2 mb-6">
+                       <p className="text-sm text-textMuted text-center uppercase tracking-widest">
+                          Lobby: {gameState.currentRoundTitle}
+                       </p>
+                       <button onClick={async () => {
+                          const slots = eventConfig.slots.filter(s => s.slotNumber !== gameState.currentSlot);
+                          const batch = writeBatch(db);
+                          batch.update(doc(db, "system", "eventConfig"), { slots });
+                          batch.update(doc(db, "system", "gameState"), { currentGameId: "", currentRoundTitle: "" });
+                          await batch.commit();
+                       }} className="text-[10px] text-primary uppercase border-b border-primary/30 hover:border-primary transition-colors pb-0.5">
+                          [ Reset Slot & Pick Different Game ]
+                       </button>
+                    </div>
                     <div className="w-full max-w-2xl space-y-4">
                       {/* A1 Config */}
                       {activeGameId === "A1" && (

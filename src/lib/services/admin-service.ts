@@ -11,6 +11,7 @@ export const initializeGameState = async () => {
     phase: "lobby",
     timerDuration: 60,
     timerStartedAt: null,
+    phaseEndsAt: null,
     timerPaused: false,
     playersAlive: 0,
     totalRegistered: 0,

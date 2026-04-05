@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { subscribeToGameState, subscribeToEventConfig, GameState, EventConfig, GamePhase } from "@/lib/services/game-service";
 import { updateGameState, startTimer, confirmEliminations, emergencyPauseToggle, finalizeRoundResults, PlayerRoundUpdate, resetToSlotOne } from "@/lib/services/admin-service";
-import { collection, onSnapshot, query, doc, writeBatch, getDocs } from "firebase/firestore";
+import { collection, onSnapshot, query, doc, writeBatch, getDocs, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { PlayerData } from "@/lib/services/player-service";
 import AdminGameStats from "./components/AdminGameStats";
@@ -214,6 +214,26 @@ export default function AdminDashboard() {
         status: prev[uid].status === "alive" ? "eliminated" : "alive"
       }
     }));
+  };
+
+  const approveWildCard = async (uid: string) => {
+    if (confirm("Approve this wild card player to join the game?")) {
+      try {
+        await updateDoc(doc(db, "players", uid), { status: "alive" });
+      } catch (e: any) {
+        alert("Error approving wild card: " + e.message);
+      }
+    }
+  };
+
+  const rejectWildCard = async (uid: string) => {
+    if (confirm("Reject this wild card?")) {
+      try {
+        await updateDoc(doc(db, "players", uid), { status: "eliminated" });
+      } catch (e: any) {
+        alert("Error rejecting wild card: " + e.message);
+      }
+    }
   };
 
   const updatePoints = (uid: string, delta: number) => {
@@ -456,6 +476,44 @@ export default function AdminDashboard() {
                         </div>
                       </div>
 
+                      {gameState.currentGameId === "A3" && gameState.results?.pairs && (
+                         <div className="space-y-4">
+                            <h3 className="text-xs uppercase tracking-widest text-secondary border-b border-secondary pb-2">A3 Pair Results ({gameState.results.pairs.length} pairs)</h3>
+                            <div className="overflow-x-auto max-h-[300px] border border-border">
+                              <table className="w-full text-[10px] uppercase tracking-tighter">
+                                 <thead className="bg-surface text-textMuted">
+                                    <tr>
+                                       <th className="p-2 text-left">P1 (Bid)</th>
+                                       <th className="p-2 text-right">P2 (Bid)</th>
+                                       <th className="p-2 text-center">Outcome</th>
+                                    </tr>
+                                 </thead>
+                                 <tbody className="divide-y divide-border">
+                                    {gameState.results.pairs.map((pair: any, i: number) => {
+                                       const p1Name = players.find(p => p.id === pair.player1Uid)?.name || pair.player1Id;
+                                       const p2Name = pair.player2Uid ? (players.find(p => p.id === pair.player2Uid)?.name || pair.player2Id) : "UNMATCHED";
+                                       return (
+                                         <tr key={i} className="hover:bg-surface/50">
+                                            <td className="p-2">
+                                              <span className="font-bold text-textDefault">{p1Name}</span> <br/>
+                                              <span className="text-secondary">Bid: {pair.val1}</span> | Score: {pair.score1} {pair.p1Bonus ? `(+${pair.p1Bonus})` : ''}
+                                            </td>
+                                            <td className="p-2 text-right">
+                                              <span className="font-bold text-textDefault">{p2Name}</span> <br/>
+                                              <span className="text-primary">Bid: {pair.val2 ?? '—'}</span> | Score: {pair.score2 ?? '—'} {pair.p2Bonus ? `(+${pair.p2Bonus})` : ''}
+                                            </td>
+                                            <td className="p-2 text-center text-textMuted">
+                                              {pair.val1 === pair.val2 ? "Tie" : (pair.val2 === null ? "Safe" : (pair.val1 < pair.val2 ? "P1 Won Bonus" : "P2 Won Bonus"))}
+                                            </td>
+                                         </tr>
+                                       );
+                                    })}
+                                 </tbody>
+                              </table>
+                            </div>
+                         </div>
+                      )}
+
                       <div className="space-y-4">
                         <h3 className="text-xs uppercase tracking-widest text-textMuted border-b border-border pb-2">Manual Override Table</h3>
                         <div className="overflow-x-auto max-h-[400px] border border-border">
@@ -589,6 +647,37 @@ export default function AdminDashboard() {
 
               <section className="space-y-4 pt-4">
                  <h3 className="text-sm text-textMuted tracking-widest uppercase">Active Player Roster Feed</h3>
+                 
+                 {/* WILD CARD PROCESSING SECTION */}
+                 {players.filter(p => p.status === "waiting" && p.isWildCard).length > 0 && (
+                   <div className="mb-8 border border-secondary shadow-glow-gold p-4 bg-secondary/10">
+                     <h4 className="text-secondary text-xs tracking-widest uppercase mb-4 animate-pulse">⚡ Pending Wild Card Requests</h4>
+                     <table className="w-full text-left text-xs bg-background border border-secondary/50">
+                       <thead className="bg-surface text-textMuted uppercase tracking-widest border-b border-secondary/50">
+                         <tr>
+                            <th className="p-2">Name</th>
+                            <th className="p-2">College</th>
+                            <th className="p-2">Phone</th>
+                            <th className="p-2 text-right">Actions</th>
+                         </tr>
+                       </thead>
+                       <tbody className="divide-y divide-secondary/20">
+                         {players.filter(p => p.status === "waiting" && p.isWildCard).map(p => (
+                            <tr key={p.id}>
+                               <td className="p-2 font-bold text-secondary">{p.name}</td>
+                               <td className="p-2">{p.college}</td>
+                               <td className="p-2">{p.phone || "—"}</td>
+                               <td className="p-2 text-right space-x-2">
+                                  <button onClick={() => approveWildCard(p.id)} className="px-3 py-1 bg-secondary text-background font-bold hover:bg-secondary/80">APPROVE</button>
+                                  <button onClick={() => rejectWildCard(p.id)} className="px-3 py-1 border border-primary text-primary hover:bg-primary hover:text-white">REJECT</button>
+                               </td>
+                            </tr>
+                         ))}
+                       </tbody>
+                     </table>
+                   </div>
+                 )}
+
                  <div className="overflow-x-auto border border-border">
                    <table className="w-full text-left text-xs bg-surface/50">
                      <thead className="bg-surface border-b border-border text-textMuted uppercase tracking-widest">
@@ -596,12 +685,16 @@ export default function AdminDashboard() {
                          <th className="p-3">ID</th>
                          <th className="p-3">Name</th>
                          <th className="p-3">Status</th>
+                         <th className="p-3 bg-secondary/10 text-secondary" title="Wild Card Origin">★ WC</th>
                          <th className="p-3">Score/Pts</th>
                          <th className="p-3">Current Input</th>
                        </tr>
                      </thead>
                      <tbody className="divide-y divide-border/50">
                        {players.sort((a,b) => {
+                         // Sort so waiting wild cards are top, then alive, then eliminated
+                         if (a.status === 'waiting' && b.status !== 'waiting') return -1;
+                         if (b.status === 'waiting' && a.status !== 'waiting') return 1;
                          if (a.status === 'eliminated' && b.status !== 'eliminated') return 1;
                          if (b.status === 'eliminated' && a.status !== 'eliminated') return -1;
                          return 0;
@@ -610,10 +703,11 @@ export default function AdminDashboard() {
                            <td className="p-3 text-secondary font-bold">{p.playerId}</td>
                            <td className="p-3">{p.name}</td>
                            <td className="p-3">
-                             <span className={`${p.status === 'eliminated' ? 'text-primary' : 'text-success'} uppercase tracking-widest`}>
+                             <span className={`${p.status === 'eliminated' ? 'text-primary' : p.status === 'waiting' ? 'text-secondary animate-pulse' : 'text-success'} uppercase tracking-widest`}>
                                {p.status}
                              </span>
                            </td>
+                           <td className="p-3 text-secondary">{p.isWildCard ? "★" : ""}</td>
                            <td className="p-3">{p.points || 0}</td>
                            <td className="p-3">
                              {typeof p.currentSubmission === 'object' ? JSON.stringify(p.currentSubmission) : p.currentSubmission ?? "—"}

@@ -83,7 +83,8 @@ export default function JoinPage() {
     setError("");
 
     try {
-      await registerPlayer(name, college, phone);
+      const isWildCard = !isFirstLobby && isWildEntryOpen;
+      await registerPlayer(name, college, phone, isWildCard);
       router.push("/lobby");
     } catch (err: any) {
       console.error(err);

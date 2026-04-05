@@ -15,10 +15,10 @@ export interface PlayerData {
   joinedAt: any;
   currentSubmission: any | null; // useful for dashboard live view
   submittedAt: any | null;
+  isWildCard?: boolean;
 }
 
-
-export const registerPlayer = async (name: string, college: string, phone: string) => {
+export const registerPlayer = async (name: string, college: string, phone: string, isWildCard: boolean = false) => {
   // 1. Ensure signed in anonymously
   if (!auth.currentUser) {
     await signInAnonymously(auth);
@@ -59,7 +59,8 @@ export const registerPlayer = async (name: string, college: string, phone: strin
     name,
     college,
     phone,
-    status: "alive",
+    status: isWildCard ? "waiting" : "alive",
+    isWildCard,
     points: 0,
     gamesPlayed: 0,
 

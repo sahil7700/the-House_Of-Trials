@@ -5,14 +5,16 @@ interface Props {
   gameState: GameState;
   players: PlayerData[];
   onUpdateGameState?: (update: Partial<GameState>) => void;
+  activeGameId?: string;
 }
 
-export default function AdminGameStats({ gameState, players, onUpdateGameState }: Props) {
+export default function AdminGameStats({ gameState, players, onUpdateGameState, activeGameId }: Props) {
   const alivePlayers = players.filter(p => p.status === "alive");
   const submissions = alivePlayers.filter(p => p.currentSubmission !== null && p.currentSubmission !== undefined);
   const gsc = (gameState as any).gameSpecificConfig || {};
+  const targetGameId = activeGameId || gameState.currentGameId;
 
-  if (gameState.currentGameId === "A1") {
+  if (targetGameId === "A1") {
     const bucketSize = 10;
     const buckets = Array.from({ length: 10 }, () => 0);
     let sum = 0;
@@ -47,7 +49,7 @@ export default function AdminGameStats({ gameState, players, onUpdateGameState }
     );
   }
 
-  if (gameState.currentGameId === "A2") {
+  if (targetGameId === "A2") {
     const counts: Record<string, number> = {};
     const rangesList = ["1-10", "11-20", "21-30", "31-40", "41-50", "51-60", "61-70", "71-80", "81-90", "91-100"];
     rangesList.forEach(r => counts[r] = 0);
@@ -75,7 +77,7 @@ export default function AdminGameStats({ gameState, players, onUpdateGameState }
     );
   }
 
-  if (gameState.currentGameId === "A3") {
+  if (targetGameId === "A3") {
      const sum = submissions.reduce((acc, curr) => acc + Number(curr.currentSubmission || 0), 0);
      const avg = submissions.length > 0 ? sum / submissions.length : 0;
      const buckets = Array.from({ length: 11 }, () => 0);
@@ -96,7 +98,7 @@ export default function AdminGameStats({ gameState, players, onUpdateGameState }
      );
   }
 
-  if (gameState.currentGameId === "A4") {
+  if (targetGameId === "A4") {
      const firstChoices: Record<string, number> = {};
      let majorityBet = ""; let maxBets = -1;
      submissions.forEach(p => {
@@ -123,7 +125,7 @@ export default function AdminGameStats({ gameState, players, onUpdateGameState }
   // ──────────────────────────────────────────────
   // B7 — Braess Paradox Live Split Meter
   // ──────────────────────────────────────────────
-  if (gameState.currentGameId === "B7") {
+  if (targetGameId === "B7") {
     const threshold = gsc.threshold || 0;
     const r1 = submissions.filter(p => p.currentSubmission === 1).length;
     const r2 = submissions.filter(p => p.currentSubmission === 2).length;
@@ -190,7 +192,7 @@ export default function AdminGameStats({ gameState, players, onUpdateGameState }
   // ──────────────────────────────────────────────
   // C10 — Peak Finder Number Reveal Controller
   // ──────────────────────────────────────────────
-  if (gameState.currentGameId === "C10") {
+  if (targetGameId === "C10") {
     const sequence: number[] = gsc.numberSequence || [];
     const currentIndex: number = gsc.currentNumberIndex || 0;
     const currentNumber = currentIndex > 0 && currentIndex <= sequence.length ? sequence[currentIndex - 1] : null;

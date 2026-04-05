@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { db } from "@/lib/firebase";
 import { GameState } from "@/lib/services/game-service";
 import { PlayerData } from "@/lib/services/player-service";
 
@@ -41,8 +42,53 @@ export default function GameB6Admin({ gameState, players, onUpdateGameState }: P
 
   const gsc = (gameState as any).gameSpecificConfig || {};
   const currentRevealStep = gsc.revealStep || 0;
+  const currentBiddingRound = gsc.biddingRound || 1;
   const isRevealPhase = gameState.phase === "reveal" || gameState.phase === "confirm";
   const isLobby = gameState.phase === "lobby";
+
+  const handleNextRound = () => {
+    if (!onUpdateGameState) return;
+    if (!confirm(`Start Bidding Round ${currentBiddingRound + 1}? This will reset submissions and deduct coins from players.`)) return;
+
+    import("firebase/firestore").then(({ writeBatch, doc }) => {
+       const batch = writeBatch(db);
+       
+       // Process coins
+       const currentCoins: Record<string, number> = gsc.playerCoins || {};
+       const newCoins = { ...currentCoins };
+
+       alivePlayers.forEach(p => {
+         // Initialize if empty
+         if (newCoins[p.id] === undefined) newCoins[p.id] = 100;
+
+         const bid = Number(p.currentSubmission);
+         if (!isNaN(bid) && bid > 0) {
+            newCoins[p.id] = Math.max(0, newCoins[p.id] - bid);
+         }
+
+         // Reset submission
+         batch.update(doc(db, "players", p.id), { 
+           currentSubmission: null, 
+           autoSubmitted: false 
+         });
+       });
+
+       // Update game state
+       batch.update(doc(db, "system", "gameState"), {
+          phase: "active",
+          results: null,
+          submissionsCount: 0,
+          "gameSpecificConfig.playerCoins": newCoins,
+          "gameSpecificConfig.biddingRound": currentBiddingRound + 1,
+          "gameSpecificConfig.revealStep": 0
+       });
+
+       batch.commit().catch(e => {
+          console.error(e);
+          alert("Failed to start next round: " + e.message);
+       });
+    });
+  };
 
   return (
     <div className="w-full space-y-6">
@@ -136,6 +182,14 @@ export default function GameB6Admin({ gameState, players, onUpdateGameState }: P
                  {step}. {label}
                </button>
              ))}
+           </div>
+           <div className="pt-4 border-t border-secondary/20 mt-4">
+             <button
+                onClick={handleNextRound}
+                className="w-full py-3 bg-background border border-primary text-primary hover:bg-primary hover:text-white transition uppercase tracking-widest text-xs font-bold shadow-glow-red"
+             >
+                START NEXT BIDDING ROUND
+             </button>
            </div>
          </div>
        )}

@@ -12,7 +12,11 @@ interface GameB6Props {
 }
 
 export default function GameB6({ onSubmit, isLocked, currentSubmission, results, playerId, timeLeft, gameState }: GameB6Props) {
-  const [bid, setBid] = useState(50);
+  const gsc = (gameState as any).gameSpecificConfig || {};
+  const myCoins = gsc.playerCoins?.[playerId] ?? 100;
+  const currentBiddingRound = gsc.biddingRound || 1;
+
+  const [bid, setBid] = useState(Math.min(50, Math.max(1, Math.floor(myCoins / 2))));
   const [showConfirm, setShowConfirm] = useState(false);
   const [revealStep, setRevealStep] = useState(0);
 
@@ -35,7 +39,7 @@ export default function GameB6({ onSubmit, isLocked, currentSubmission, results,
   }, [gameState.phase, results]);
 
   const handleAdjust = (delta: number) => {
-    setBid(prev => Math.max(1, Math.min(100, prev + delta)));
+    setBid(prev => Math.max(1, Math.min(myCoins, prev + delta)));
   };
 
   const handleConfirm = () => {
@@ -140,10 +144,10 @@ export default function GameB6({ onSubmit, isLocked, currentSubmission, results,
   return (
     <div className="w-full max-w-md mx-auto space-y-8 mt-4">
        <div className="text-center space-y-2 mb-12">
-          <p className="text-secondary text-sm uppercase tracking-widest font-bold">Round {gameState.currentSlot} · {gameState.currentRoundTitle || "Bidding Survival"}</p>
+          <p className="text-secondary text-sm uppercase tracking-widest font-bold">Round {gameState.currentSlot} (Bid Round {currentBiddingRound}) · {gameState.currentRoundTitle || "Bidding Survival"}</p>
           <h1 className="text-4xl sm:text-5xl font-serif text-white tracking-widest uppercase mb-4">Bidding Survival</h1>
           <div className="bg-surface/50 border border-border p-4 text-xs text-textMuted uppercase tracking-wider leading-relaxed">
-             <p>You have 100 coins. Bid to prove your commitment.</p>
+             <p>You have {myCoins} coins. Bid to prove your commitment.</p>
              <p className="text-primary">Bid too low — you are eliminated.</p>
              <p className="text-secondary">Bid too high — you survive but carry a penalty.</p>
           </div>
@@ -154,19 +158,19 @@ export default function GameB6({ onSubmit, isLocked, currentSubmission, results,
              <div className="w-8 h-8 rounded-full border-2 border-secondary flex items-center justify-center mx-auto mb-2 relative">
                 <div className="absolute w-full h-[2px] bg-secondary rotate-45 transform scale-75" />
              </div>
-             <p className="text-secondary text-2xl font-mono font-bold tracking-widest">Your coins: 100</p>
+             <p className="text-secondary text-2xl font-mono font-bold tracking-widest">Your coins: {myCoins}</p>
           </div>
 
           <div className="space-y-6">
              <div className="text-center">
                 <span className="text-[80px] leading-none font-mono text-white block">{bid}</span>
-                <span className="text-xs text-textMuted uppercase tracking-widest">You are bidding {bid}% of your total coins.</span>
+                <span className="text-xs text-textMuted uppercase tracking-widest">You are bidding {bid} of your {myCoins} coins.</span>
              </div>
 
              <input 
                 type="range" 
                 min="1" 
-                max="100" 
+                max={myCoins} 
                 value={bid} 
                 onChange={(e) => setBid(parseInt(e.target.value))} 
                 className="w-full accent-primary h-2 bg-background appearance-none"
@@ -204,7 +208,7 @@ export default function GameB6({ onSubmit, isLocked, currentSubmission, results,
                 <div className="max-w-sm w-full bg-surface border border-border p-8 space-y-8 text-center text-white">
                    <h3 className="font-serif text-2xl uppercase tracking-widest">Confirm Bid</h3>
                    <div className="space-y-2 text-sm text-textMuted">
-                      <p>You are bidding <span className="text-2xl font-mono text-secondary">{bid}</span> coins out of 100.</p>
+                      <p>You are bidding <span className="text-2xl font-mono text-secondary">{bid}</span> coins out of {myCoins}.</p>
                       <p className="text-primary uppercase mt-4 text-[10px] sm:text-xs">This cannot be changed after confirming.</p>
                    </div>
                    <div className="flex gap-4">

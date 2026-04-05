@@ -110,25 +110,84 @@ export default function AdminDashboard() {
   }, [user, authLoading, router]);
 
   // Auto-lock when all alive players have submitted (with debounce to prevent rapid toggling)
-  const autoLockFiredForSlot = useRef<number>(-1);
+  const autoLockFiredForSlot = useRef<string>("");
   useEffect(() => {
     if (!gameState) return;
     const isAct = gameState.phase === "active" || gameState.phase === "active_a" || gameState.phase === "active_b";
     if (!isAct) return;
     
-    // Guard: only fire once per slot
-    if (autoLockFiredForSlot.current === gameState.currentSlot) return;
+    // Guard: only fire once per slot + phase
+    if (autoLockFiredForSlot.current === String(gameState.currentSlot) + gameState.phase) return;
     
     const totalAlive = players.filter(p => p.status === "alive").length;
     const submitted = players.filter(p => p.currentSubmission !== null && p.status === "alive").length;
     if (totalAlive > 0 && submitted >= totalAlive) {
-      autoLockFiredForSlot.current = gameState.currentSlot;
+      autoLockFiredForSlot.current = String(gameState.currentSlot) + gameState.phase;
       const newPhase = gameState.phase === "active" ? "locked"
         : gameState.phase === "active_a" ? "locked_a"
         : "locked_b";
-      updateGameState({ phase: newPhase as GamePhase });
+      updateGameState({ phase: newPhase as any });
     }
   }, [players, gameState]);
+
+  // Client-side AUTO-LOCK driven securely by the Admin Dashboard
+  // This replaces the unauthenticated `/api/game/auto-lock` which failed due to rules.
+  useEffect(() => {
+    if (!gameState || !["active", "active_a", "active_b", "open_a", "open_b"].includes(gameState.phase) || !gameState.timerStartedAt) return;
+
+    const interval = setInterval(() => {
+      const now = new Date().getTime();
+      const start = gameState.timerStartedAt?.toDate?.()?.getTime() || 0;
+      if (start === 0) return;
+      const diff = Math.floor((now - start) / 1000);
+      const remaining = Math.max(0, gameState.timerDuration - diff);
+
+      if (remaining === 0) {
+        clearInterval(interval);
+        if (autoLockFiredForSlot.current !== String(gameState.currentSlot) + gameState.phase) {
+          autoLockFiredForSlot.current = String(gameState.currentSlot) + gameState.phase;
+          console.log("Admin Dashboard triggering Auto-Lock...");
+          const newPhase = gameState.phase === "active_a" ? "locked_a" 
+            : gameState.phase === "active_b" ? "locked_b" 
+            : "locked";
+          
+          import("firebase/firestore").then(({ writeBatch, doc, serverTimestamp }) => {
+            const batch = writeBatch(db);
+            const aliveMissing = players.filter(p => p.status === "alive" && (p.currentSubmission === null || p.currentSubmission === undefined));
+            
+            const gameId = gameState.currentGameId;
+            aliveMissing.forEach(p => {
+               let autoVal: any = null;
+               if (gameId === "A1" || gameId === "B6") autoVal = 50;
+               else if (gameId === "A2") autoVal = "1-10";
+               else if (gameId === "B7") autoVal = 1;
+               else if (gameId === "B8" || gameId === "C10" || gameId === "A4") autoVal = "TIME_EXPIRED";
+               else if (gameId === "C9") {
+                 if (gameState.phase === "active_a") autoVal = { type: "sequence", value: [0, 0, 0] };
+                 else if (gameState.phase === "active_b") autoVal = { type: "guess", value: [0, 0, 0] };
+               } else if (gameId === "SILENCE") autoVal = { answer: null, confidence: null, autoSubmitted: true };
+               else if (gameId === "LEMONS") autoVal = { role: "none", autoSubmitted: true };
+     
+               batch.update(doc(db, "players", p.id), {
+                 currentSubmission: autoVal,
+                 autoSubmitted: true,
+               });
+            });
+
+            batch.update(doc(db, "system", "gameState"), {
+              phase: newPhase,
+              lockedAt: serverTimestamp()
+            });
+
+            batch.commit().catch(e => console.error("Admin Auto-Lock failed:", e));
+          });
+        }
+      }
+    }, 500);
+
+    return () => clearInterval(interval);
+  }, [gameState, players]);
+
 
   // Sync results to pending updates for orchestration
   useEffect(() => {

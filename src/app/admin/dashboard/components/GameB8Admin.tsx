@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { GameState } from "@/lib/services/game-service";
 import { PlayerData } from "@/lib/services/player-service";
 import { db } from "@/lib/firebase";
@@ -25,6 +25,38 @@ export default function GameB8Admin({ gameState, players, onUpdateGameState }: P
   const isLobby = gameState.phase === "lobby";
   const isActive = gameState.phase === "active";
   const isLocked = gameState.phase === "locked";
+
+  // ── CASCADE WATCHER (Admin-driven auto-advance) ──
+  // Replaces the unauthenticated API route by letting the authenticated Admin client handle state updates.
+  useEffect(() => {
+    if (gameState.phase !== "active" || currentTurnIndex >= queue.length) return;
+
+    const currentPlayerId = queue[currentTurnIndex];
+    const currentPlayer = alivePlayers.find(p => p.id === currentPlayerId);
+
+    if (currentPlayer && currentPlayer.currentSubmission && ["RED", "BLUE"].includes(currentPlayer.currentSubmission)) {
+      if (publicFeed.length === currentTurnIndex && onUpdateGameState) {
+        // Player has made their choice. Push it to the feed and advance the turn index.
+        const newFeed = [...publicFeed, {
+          playerId: currentPlayerId,
+          playerName: currentPlayer.name || currentPlayerId,
+          choice: currentPlayer.currentSubmission,
+        }];
+
+        const nextIndex = currentTurnIndex + 1;
+        const isFinished = nextIndex >= queue.length;
+
+        onUpdateGameState({
+          phase: isFinished ? "locked" : "active",
+          gameSpecificConfig: {
+            ...gsc,
+            publicFeed: newFeed,
+            currentTurnIndex: nextIndex,
+          }
+        } as any);
+      }
+    }
+  }, [players, gameState.phase, currentTurnIndex, queue, publicFeed, gsc, onUpdateGameState]);
 
   // ── GENERATE SIGNALS & QUEUE ──
   const handleGenerateGame = () => {

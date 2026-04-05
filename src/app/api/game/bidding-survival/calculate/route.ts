@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs, doc, updateDoc } from "firebase/firestore";
+import { collection, query, where, getDocs } from "firebase/firestore";
 
 interface BiddingSurvivalConfig {
   eliminationMode: "fixed" | "percentage";
@@ -82,13 +82,6 @@ export async function POST(req: NextRequest) {
       eliminatedCount: eliminated.length,
       survivedCount: sorted.length - eliminated.length
     };
-
-    // Update gameState results directly since this is an admin pipeline
-    const gameStateRef = doc(db, "system", "gameState");
-    await updateDoc(gameStateRef, {
-      results: { ...results, eliminatedPlayerIds: eliminatedIds },
-      phase: "reveal"
-    });
 
     return NextResponse.json({ success: true, results, eliminatedPlayerIds: eliminatedIds });
   } catch (error: any) {

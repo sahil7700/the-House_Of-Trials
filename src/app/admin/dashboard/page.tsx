@@ -199,6 +199,8 @@ export default function AdminDashboard() {
          });
          const data = await res.json();
          if (!data.success) throw new Error(data.error);
+         
+         await updateGameState({ results: { ...data.results, eliminatedPlayerIds: data.eliminatedPlayerIds }, phase: "reveal" });
          setCalculating(false);
          return;
       }
@@ -209,6 +211,8 @@ export default function AdminDashboard() {
          });
          const data = await res.json();
          if (!data.success) throw new Error(data.error);
+         
+         await updateGameState({ results: { ...data.results, eliminatedPlayerIds: data.eliminatedPlayerIds }, phase: "reveal" });
          setCalculating(false);
          return;
       }
@@ -219,6 +223,18 @@ export default function AdminDashboard() {
          });
          const data = await res.json();
          if (!data.success) throw new Error(data.error);
+         
+         const { writeBatch, doc } = await import("firebase/firestore");
+         const { db } = await import("@/lib/firebase");
+         const batch = writeBatch(db);
+         batch.update(doc(db, "pairs", String(gameState.currentSlot)), { pairs: data.pairs });
+         await batch.commit();
+
+         await updateGameState({ 
+            results: { pairs: data.pairs, eliminatedPlayerIds: data.eliminatedPlayerIds, message: "Calculations Complete" }, 
+            phase: "reveal" 
+         });
+         
          setCalculating(false);
          return;
       }

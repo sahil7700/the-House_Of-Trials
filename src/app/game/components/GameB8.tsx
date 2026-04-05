@@ -23,7 +23,8 @@ export default function GameB8({ onSubmit, isLocked, currentSubmission, results,
   const mySignal = signals[playerId];
   const myQueueIndex = queue.indexOf(playerId);
   const isMyTurn = myQueueIndex === currentTurnIndex && gameState.phase === "active";
-  const myTurnHasPassed = myQueueIndex < currentTurnIndex;
+  const myTurnHasPassed = myQueueIndex !== -1 && myQueueIndex < currentTurnIndex;
+  const inQueue = myQueueIndex !== -1;
 
   // Auto-submit when time is up AND it is my turn
   useEffect(() => {
@@ -109,7 +110,12 @@ export default function GameB8({ onSubmit, isLocked, currentSubmission, results,
 
        {/* Interaction Block */}
        <div className="pt-4 border-t border-border mt-8">
-          {myTurnHasPassed ? (
+          {!inQueue ? (
+             <div className="p-6 border border-border bg-background text-center flex flex-col items-center justify-center space-y-4">
+                <p className="text-xs uppercase tracking-widest text-textMuted">You are not in the queue</p>
+                {gameState.phase === "lobby" && <p className="text-[10px] text-primary animate-pulse">Waiting for Admin to generate the cascade...</p>}
+             </div>
+          ) : myTurnHasPassed ? (
              <div className="p-4 border border-border bg-background text-center">
                 <p className="text-xs uppercase tracking-widest text-textMuted">Your decision is recorded.</p>
                 <p className={`text-2xl font-bold mt-2 ${currentSubmission === 'RED' ? 'text-primary' : 'text-blue-500'}`}>{currentSubmission}</p>

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, doc, updateDoc } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 
 export async function POST(req: NextRequest) {
   try {
@@ -48,13 +48,6 @@ export async function POST(req: NextRequest) {
        eliminatedCount: eliminatedIds.length,
        eliminatedPlayerIds: eliminatedIds
     };
-
-    // Update gameState results directly since this is an admin pipeline
-    const gameStateRef = doc(db, "system", "gameState");
-    await updateDoc(gameStateRef, {
-      results,
-      phase: "reveal"
-    });
 
     return NextResponse.json({ success: true, results, eliminatedPlayerIds: eliminatedIds });
   } catch (error: any) {

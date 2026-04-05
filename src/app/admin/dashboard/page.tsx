@@ -881,15 +881,15 @@ export default function AdminDashboard() {
                             className="w-full bg-surface border border-border p-3 text-textDefault focus:border-secondary outline-none transition-colors"
                           >
                             <option value="A1">A1: Majority Trap (Numerical) {getGamePlayCount("A1") > 0 ? `[Played ${getGamePlayCount("A1")}]` : ""}</option>
-                            <option value="A2">A2: Range Minority {getGamePlayCount("A2") > 0 ? `[Played ${getGamePlayCount("A2")}]` : ""}</option>
-                            <option value="A3">A3: Sequential Pair Elimination {getGamePlayCount("A3") > 0 ? `[Played ${getGamePlayCount("A3")}]` : ""}</option>
-                            <option value="A4">A4: Weighted Ranking {getGamePlayCount("A4") > 0 ? `[Played ${getGamePlayCount("A4")}]` : ""}</option>
-                            <option value="B5">B5: Nashify / Black Hole (Puzzle) {getGamePlayCount("B5") > 0 ? `[Played ${getGamePlayCount("B5")}]` : ""}</option>
-                            <option value="B6">B6: Market of Lemons (Physical) {getGamePlayCount("B6") > 0 ? `[Played ${getGamePlayCount("B6")}]` : ""}</option>
-                            <option value="B7">B7: Threshold Route Choice {getGamePlayCount("B7") > 0 ? `[Played ${getGamePlayCount("B7")}]` : ""}</option>
-                            <option value="B8">B8: Information Cascade (Physical) {getGamePlayCount("B8") > 0 ? `[Played ${getGamePlayCount("B8")}]` : ""}</option>
-                            <option value="C9">C9: Pluralistic Silence {getGamePlayCount("C9") > 0 ? `[Played ${getGamePlayCount("C9")}]` : ""}</option>
-                            <option value="C10">C10: Top Percentage Elimination {getGamePlayCount("C10") > 0 ? `[Played ${getGamePlayCount("C10")}]` : ""}</option>
+                            <option value="A2">A2: Minority Trap (Range Hunter) {getGamePlayCount("A2") > 0 ? `[Played ${getGamePlayCount("A2")}]` : ""}</option>
+                            <option value="A3">A3: Traveler's Dilemma {getGamePlayCount("A3") > 0 ? `[Played ${getGamePlayCount("A3")}]` : ""}</option>
+                            <option value="A4">A4: Borda Sabotage (Strategic Vote) {getGamePlayCount("A4") > 0 ? `[Played ${getGamePlayCount("A4")}]` : ""}</option>
+                            <option value="B5">B5: Nashify / Black Hole (Physical puzzle) {getGamePlayCount("B5") > 0 ? `[Played ${getGamePlayCount("B5")}]` : ""}</option>
+                            <option value="B6">B6: Bidding Survival {getGamePlayCount("B6") > 0 ? `[Played ${getGamePlayCount("B6")}]` : ""}</option>
+                            <option value="B7">B7: Braess Paradox {getGamePlayCount("B7") > 0 ? `[Played ${getGamePlayCount("B7")}]` : ""}</option>
+                            <option value="B8">B8: Information Cascade {getGamePlayCount("B8") > 0 ? `[Played ${getGamePlayCount("B8")}]` : ""}</option>
+                            <option value="C9">C9: Sequence Match {getGamePlayCount("C9") > 0 ? `[Played ${getGamePlayCount("C9")}]` : ""}</option>
+                            <option value="C10">C10: Peak Finder {getGamePlayCount("C10") > 0 ? `[Played ${getGamePlayCount("C10")}]` : ""}</option>
                             <option value="OFFLINE">Offline: Manual/Physical Trial {getGamePlayCount("OFFLINE") > 0 ? `[Played ${getGamePlayCount("OFFLINE")}]` : ""}</option>
                           </select>
                         </div>

@@ -104,7 +104,9 @@ export default function GameUI() {
         isLocked,
         currentSubmission: player.currentSubmission ?? null,
         results: gameState.phase === "reveal" || gameState.phase === "confirm" ? gameState.results : null,
-        playerId: player.id
+        playerId: player.id,
+        customOptions: gameState.customOptions,
+        gameSpecificConfig: (gameState as any).gameSpecificConfig
      };
 
      switch (gameState.currentGameId) {
@@ -169,7 +171,7 @@ export default function GameUI() {
            </motion.div>
         )}
         
-        {gameState.phase === "reveal" && gameState.results?.eliminatedPlayerIds?.includes(player.id) && !["A1", "A2", "A3", "A4"].includes(gameState.currentGameId) && (
+        {gameState.phase === "reveal" && gameState.results?.eliminatedPlayerIds?.includes(player.id) && !["A1", "A2", "A3", "A4", "B7", "C10"].includes(gameState.currentGameId) && (
            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }} className="fixed inset-0 z-50 bg-[#0a0a0f] border-8 border-primary flex items-center justify-center p-8">
              <div className="text-center space-y-6">
                 <div className="text-primary text-6xl drop-shadow-glow-red animate-pulse">☠</div>
@@ -179,7 +181,7 @@ export default function GameUI() {
            </motion.div>
         )}
 
-        {gameState.phase === "reveal" && !gameState.results?.eliminatedPlayerIds?.includes(player.id) && player.status !== "eliminated" && !["A1", "A2", "A3", "A4"].includes(gameState.currentGameId) && (
+        {gameState.phase === "reveal" && !gameState.results?.eliminatedPlayerIds?.includes(player.id) && player.status !== "eliminated" && !["A1", "A2", "A3", "A4", "B7", "C10"].includes(gameState.currentGameId) && (
            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1.5 }} className="fixed inset-0 z-50 bg-secondary/10 flex items-center justify-center pointer-events-none">
              <div className="text-center text-secondary drop-shadow-glow-gold animate-pulse">
                 <h1 className="font-serif uppercase tracking-[0.2em] text-4xl">Survived</h1>

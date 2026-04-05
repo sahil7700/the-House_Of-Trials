@@ -7,13 +7,16 @@ interface GameProps {
   currentSubmission: any;
   results: any;
   playerId?: string;
+  customOptions?: string[];
 }
 
-export default function GameA4({ onSubmit, isLocked, currentSubmission, results, playerId }: GameProps) {
+export default function GameA4({ onSubmit, isLocked, currentSubmission, results, playerId, customOptions }: GameProps) {
   const [ranked, setRanked] = useState<string[]>([]);
   const [confirming, setConfirming] = useState(false);
   const [revealStep, setRevealStep] = useState(0);
-  const options = ["Option A", "Option B", "Option C", "Option D"];
+  const options = customOptions && customOptions.length > 0 && customOptions.some(o => o.trim() !== "") 
+     ? customOptions 
+     : ["Option A", "Option B", "Option C", "Option D"];
   
   useEffect(() => {
     if (results && revealStep === 0) {

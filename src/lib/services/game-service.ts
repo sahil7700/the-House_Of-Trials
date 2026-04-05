@@ -57,6 +57,8 @@ export interface GameState {
   wildEntryOpen: boolean; // admin can open late registration mid-game
   roundType: "standard" | "semi-final" | "final";
   winnerId: string | null;
+  customOptions?: string[];
+  gameSpecificConfig?: any;
   gameHistory: Record<string, number>; // gameId -> playCount
 }
 

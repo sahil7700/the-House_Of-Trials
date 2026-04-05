@@ -25,7 +25,11 @@ export default function EliminatedPage() {
     }
     const unsubPlayer = subscribeToPlayer(user.uid, (p) => {
       setPlayer(p);
-      if (p && p.status === "alive") {
+      if (p === null) {
+        router.push("/join");
+        return;
+      }
+      if (p.status === "alive") {
         router.push("/lobby");
       }
     });

@@ -2,7 +2,27 @@
 
 import { motion } from "framer-motion";
 
+import { useEffect } from "react";
+import { useAuth } from "@/lib/auth-context";
+import { subscribeToPlayer } from "@/lib/services/player-service";
+import { useRouter } from "next/navigation";
+
 export default function WinnerPage() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (loading) return;
+    if (!user) {
+      router.push("/join");
+      return;
+    }
+    const unsub = subscribeToPlayer(user.uid, (p) => {
+      if (p === null) router.push("/join");
+    });
+    return () => unsub();
+  }, [user, loading, router]);
+
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-6 bg-[#0a0a0f] text-textDefault relative overflow-hidden">
       

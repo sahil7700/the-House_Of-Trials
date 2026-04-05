@@ -44,7 +44,12 @@ export default function GameUI() {
 
     const unsubGame = subscribeToGameState(setGameState);
     const unsubConfig = subscribeToEventConfig(setEventConfig);
-    const unsubPlayer = subscribeToPlayer(user.uid, setPlayer);
+    const unsubPlayer = subscribeToPlayer(user.uid, (p) => {
+      setPlayer(p);
+      if (p === null) {
+        router.push("/join");
+      }
+    });
 
     const unsubPlayers = onSnapshot(query(collection(db, "players")), (snap) => {
       const all = snap.docs.map(d => d.data() as PlayerData);

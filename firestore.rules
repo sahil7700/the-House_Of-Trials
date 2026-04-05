@@ -2,61 +2,54 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Helper functions
+    // Core Helper Functions
     function isAuthenticated() {
       return request.auth != null;
     }
+
+    // Check if the user is the Admin (logged in via email instead of anonymous)
+    function isAdminUser() {
+      return request.auth != null && request.auth.token.firebase.sign_in_provider == 'password';
+    }
     
+    // Legacy mapping just in case
     function isPlayer(uid) {
       return request.auth.uid == uid;
     }
-    
-    function isAdminUser() {
-      // Admin users are stored in the admins collection with their UID as document ID
-      return isAuthenticated() && 
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
-    }
-    
-    // Admins collection - only readable by authenticated, writable only by existing admins
+
+    // Admins collection
     match /admins/{adminId} {
       allow read: if isAuthenticated();
       allow write: if isAdminUser();
     }
     
-    // System collection - game state and event config
-    match /system/{docId} {
-      // gameState - players can read, only admins can write
-      allow read: if isAuthenticated();
-      allow write: if isAdminUser();
-      
-      // eventConfig - players can read (for game rules), only admins can write
-      allow read: if isAuthenticated();
-      allow write: if isAdminUser();
+    // System collection (gameState & eventConfig)
+    match /system/{document} {
+      allow read: if isAuthenticated();     
+      allow write: if isAdminUser();   
     }
-    
+
     // Players collection
     match /players/{playerId} {
-      // Players can read ALL player data (needed for leaderboards, pairings, etc.)
-      // This is a game show so privacy is limited
+      // Players can read ALL player data 
       allow read: if isAuthenticated();
       
-      // Players can only write to their own document
+      // Players can only write to their own document upon registry
       allow create: if isAuthenticated() && isPlayer(playerId);
+      
+      // Players can update their specific submission fields, Admins can do anything
       allow update: if (isAuthenticated() && isPlayer(playerId) && 
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentSubmission', 'submittedAt', 'lastSeen'])) || isAdminUser();
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentSubmission', 'submittedAt', 'lastSeen'])) 
+        || isAdminUser();
+        
+      // Only Admin can delete players during Event Reset
       allow delete: if isAdminUser();
     }
     
-    // Submissions collection - immutable once written
+    // Submissions collection
     match /submissions/{submissionId} {
-      // Anyone authenticated can read submissions (for admin dashboard)
       allow read: if isAuthenticated();
-      
-      // Submissions can only be created, never updated or deleted
-      // The submissionId format is: slotNumber_uid
-      allow create: if isAuthenticated() && 
-        // The player can only create submissions with their own uid
-        request.resource.data.playerId == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.playerId == request.auth.uid;
       allow update, delete: if isAdminUser();
     }
     
@@ -69,29 +62,23 @@ service cloud.firestore {
     // Lemon assignments - for GameLemons
     match /lemonAssignments/{docId} {
       allow read: if isAuthenticated();
-      // Only admins can write assignments
       allow write: if isAdminUser();
     }
     
     // Market trades - for GameLemons
     match /marketTrades/{tradeId} {
       allow read: if isAuthenticated();
-      // Players can only create trades for themselves as seller
-      // and update trades where they are the buyer (accept/decline)
-      allow create: if isAuthenticated() && 
-        request.resource.data.sellerId == request.auth.uid;
-      allow update: if isAuthenticated() && 
-        resource.data.buyerId == request.auth.uid &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'respondedAt']);
+      allow create: if isAuthenticated() && request.resource.data.sellerId == request.auth.uid;
+      allow update: if isAuthenticated() && resource.data.buyerId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'respondedAt']);
       allow delete: if false;
     }
     
-    // Admin audit log - only admins can read/write
+    // Admin audit log
     match /adminAuditLog/{logId} {
       allow read, write: if isAdminUser();
     }
     
-    // Rate limiting - prevent spam submissions
+    // Rate limiting
     match /rateLimits/{limitId} {
       allow read, write: if isAuthenticated();
     }

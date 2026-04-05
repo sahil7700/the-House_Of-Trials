@@ -89,7 +89,7 @@ export default function GameUI() {
   }
 
   const currentSlotConfig = eventConfig.slots.find(s => s.slotNumber === gameState.currentSlot);
-  if (!currentSlotConfig) return <div>Invalid Slot Configuration</div>;
+  // Remove early return. We will use gameState fallbacks instead.
 
   const handleSubmission = async (val: any) => {
     if (!user) return;
@@ -113,7 +113,7 @@ export default function GameUI() {
        case "A4": return <GameA4 {...commonProps} />;
        case "B7": return <GameB7 {...commonProps} />;
        case "C10": return <GameC10 {...commonProps} />;
-       default: return <OfflineGame isLocked={isLocked} gameName={currentSlotConfig.gameName} />;
+       default: return <OfflineGame isLocked={isLocked} gameName={gameState?.currentRoundTitle || currentSlotConfig?.gameName || "Physical Trial"} />;
      }
   };
 
@@ -182,6 +182,39 @@ export default function GameUI() {
            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1.5 }} className="fixed inset-0 z-50 bg-secondary/10 flex items-center justify-center pointer-events-none">
              <div className="text-center text-secondary drop-shadow-glow-gold animate-pulse">
                 <h1 className="font-serif uppercase tracking-[0.2em] text-4xl">Survived</h1>
+             </div>
+           </motion.div>
+        )}
+
+        {/* Phase: Game Over - Tournament Results */}
+        {gameState.phase === "game_over" && (
+           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[60] bg-background flex flex-col items-center justify-center p-8 text-center">
+             <div className="absolute inset-0 bg-scanlines opacity-20 pointer-events-none" />
+             
+             {gameState.winnerId === player.id ? (
+               <div className="space-y-6">
+                 <div className="text-secondary text-7xl drop-shadow-glow-gold animate-bounce">🏆</div>
+                 <h1 className="text-5xl font-serif text-secondary tracking-widest uppercase italic">The Winner</h1>
+                 <p className="text-textDefault max-w-xs font-mono uppercase tracking-widest bg-secondary/10 border border-secondary p-4 mx-auto">
+                   Congratulations, Player {player.playerId}. You are the last one standing.
+                 </p>
+               </div>
+             ) : (
+               <div className="space-y-6">
+                 <h1 className="text-4xl font-serif text-textMuted tracking-[0.3em] uppercase">Tournament Ended</h1>
+                 <p className="text-textMuted text-xs uppercase tracking-widest">Final Status</p>
+                 <div className="border border-border p-6 bg-surface space-y-2 min-w-[200px]">
+                    <p className="text-textMuted font-mono text-sm">Status: <span className="text-textDefault">FINALIST</span></p>
+                    <p className="text-textMuted font-mono text-sm">Total Points: <span className="text-textDefault">{player.points}</span></p>
+                 </div>
+               </div>
+             )}
+             
+             <div className="mt-12 space-y-2">
+                <p className="text-[10px] text-textMuted uppercase tracking-widest">Victory</p>
+                <div className="text-secondary text-xl font-bold tracking-widest uppercase">
+                   THE CHAMPION HAS BEEN CROWNED
+                </div>
              </div>
            </motion.div>
         )}

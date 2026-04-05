@@ -25,6 +25,11 @@ export default function AdminDashboard() {
   const [nextGameId, setNextGameId] = useState("A1");
   const [nextGameTitle, setNextGameTitle] = useState("");
   const [nextGameTimer, setNextGameTimer] = useState(60);
+  const [nextRoundType, setNextRoundType] = useState<"standard" | "semi-final" | "final">("standard");
+
+  const getGamePlayCount = (id: string) => {
+    return gameState?.gameHistory?.[id] || 0;
+  };
 
   useEffect(() => {
     if (authLoading) return;
@@ -168,10 +173,15 @@ export default function AdminDashboard() {
       return;
     }
 
-    if (confirm(`Finalize round and apply points/eliminations for ${updates.length} players?`)) {
+    const isFinal = gameState.roundType === "final";
+    const msg = isFinal 
+      ? "CRITICAL: This is the FINAL ROUND. Finalizing will declare the winner and conclude the tournament. Continue?"
+      : `Finalize round and apply points/eliminations for ${updates.length} players?`;
+
+    if (confirm(msg)) {
       setCalculating(true);
       try {
-        await finalizeRoundResults(updates);
+        await finalizeRoundResults(updates, isFinal);
         setPendingUpdates({});
       } catch (e: any) {
         alert("Error finalizing: " + e.message);
@@ -223,11 +233,16 @@ export default function AdminDashboard() {
     
     setCalculating(true);
     try {
+      const newHistory = { ...(gameState?.gameHistory || {}) };
+      newHistory[nextGameId] = (newHistory[nextGameId] || 0) + 1;
+
       await updateGameState({
         currentGameId: nextGameId,
         currentRoundTitle: nextGameTitle,
         phase: "lobby",
         timerDuration: nextGameTimer,
+        roundType: nextRoundType,
+        gameHistory: newHistory,
         results: null,
         submissionsCount: 0
       });
@@ -472,8 +487,8 @@ export default function AdminDashboard() {
                       </div>
 
                       <div className="flex gap-4 justify-center pt-4">
-                        <button onClick={handleFinalizeResults} disabled={calculating} className="bg-primary/20 border border-primary text-primary hover:bg-primary hover:text-white px-8 py-3 tracking-widest uppercase transition-colors shadow-glow-red">
-                          {calculating ? "Processing Batch..." : "FINALIZE & COMMIT ROUND"}
+                        <button onClick={handleFinalizeResults} disabled={calculating} className={`border px-8 py-3 tracking-widest uppercase transition-colors shadow-glow-red ${gameState.roundType === 'final' ? 'bg-secondary text-background border-secondary font-bold' : 'bg-primary/20 border-primary text-primary hover:bg-primary hover:text-white'}`}>
+                          {calculating ? "Processing Batch..." : (gameState.roundType === 'final' ? "🏆 FINALIZE EVENT & DECLARE WINNER" : "FINALIZE & COMMIT ROUND")}
                         </button>
                       </div>
                    </div>
@@ -496,17 +511,17 @@ export default function AdminDashboard() {
                             onChange={(e) => setNextGameId(e.target.value)}
                             className="w-full bg-surface border border-border p-3 text-textDefault focus:border-secondary outline-none transition-colors"
                           >
-                            <option value="A1">A1: Majority Trap (Numerical)</option>
-                            <option value="A2">A2: Range Minority</option>
-                            <option value="A3">A3: Sequential Pair Elimination</option>
-                            <option value="A4">A4: Weighted Ranking</option>
-                            <option value="B5">B5: Nashify / Black Hole (Puzzle)</option>
-                            <option value="B6">B6: Market of Lemons (Physical)</option>
-                            <option value="B7">B7: Threshold Route Choice</option>
-                            <option value="B8">B8: Information Cascade (Physical)</option>
-                            <option value="C9">C9: Pluralistic Silence</option>
-                            <option value="C10">C10: Top Percentage Elimination</option>
-                            <option value="OFFLINE">Offline: Manual/Physical Trial</option>
+                            <option value="A1">A1: Majority Trap (Numerical) {getGamePlayCount("A1") > 0 ? `[Played ${getGamePlayCount("A1")}]` : ""}</option>
+                            <option value="A2">A2: Range Minority {getGamePlayCount("A2") > 0 ? `[Played ${getGamePlayCount("A2")}]` : ""}</option>
+                            <option value="A3">A3: Sequential Pair Elimination {getGamePlayCount("A3") > 0 ? `[Played ${getGamePlayCount("A3")}]` : ""}</option>
+                            <option value="A4">A4: Weighted Ranking {getGamePlayCount("A4") > 0 ? `[Played ${getGamePlayCount("A4")}]` : ""}</option>
+                            <option value="B5">B5: Nashify / Black Hole (Puzzle) {getGamePlayCount("B5") > 0 ? `[Played ${getGamePlayCount("B5")}]` : ""}</option>
+                            <option value="B6">B6: Market of Lemons (Physical) {getGamePlayCount("B6") > 0 ? `[Played ${getGamePlayCount("B6")}]` : ""}</option>
+                            <option value="B7">B7: Threshold Route Choice {getGamePlayCount("B7") > 0 ? `[Played ${getGamePlayCount("B7")}]` : ""}</option>
+                            <option value="B8">B8: Information Cascade (Physical) {getGamePlayCount("B8") > 0 ? `[Played ${getGamePlayCount("B8")}]` : ""}</option>
+                            <option value="C9">C9: Pluralistic Silence {getGamePlayCount("C9") > 0 ? `[Played ${getGamePlayCount("C9")}]` : ""}</option>
+                            <option value="C10">C10: Top Percentage Elimination {getGamePlayCount("C10") > 0 ? `[Played ${getGamePlayCount("C10")}]` : ""}</option>
+                            <option value="OFFLINE">Offline: Manual/Physical Trial {getGamePlayCount("OFFLINE") > 0 ? `[Played ${getGamePlayCount("OFFLINE")}]` : ""}</option>
                           </select>
                         </div>
 
@@ -519,6 +534,19 @@ export default function AdminDashboard() {
                             onChange={(e) => setNextGameTitle(e.target.value)}
                             className="w-full bg-surface border border-border p-3 text-textDefault focus:border-secondary outline-none transition-colors"
                           />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] text-textMuted uppercase tracking-widest">Round Type</label>
+                          <select 
+                            value={nextRoundType} 
+                            onChange={(e) => setNextRoundType(e.target.value as any)}
+                            className="w-full bg-surface border border-border p-3 text-textDefault focus:border-secondary outline-none transition-colors"
+                          >
+                            <option value="standard">Standard Round</option>
+                            <option value="semi-final">Semi-Final</option>
+                            <option value="final">Final Round</option>
+                          </select>
                         </div>
 
                         <div className="space-y-2">

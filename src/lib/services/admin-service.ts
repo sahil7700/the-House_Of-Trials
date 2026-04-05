@@ -19,7 +19,10 @@ export const initializeGameState = async () => {
     pendingEliminations: [],
     displayMessage: null,
     emergencyPause: false,
-    wildEntryOpen: false
+    wildEntryOpen: false,
+    roundType: "standard",
+    winnerId: null,
+    gameHistory: {}
   };
   await setDoc(docRef, initialState, { merge: true });
 };
@@ -105,8 +108,18 @@ export interface PlayerRoundUpdate {
   pointsDelta: number;
 }
 
-export const finalizeRoundResults = async (updates: PlayerRoundUpdate[]) => {
+export const finalizeRoundResults = async (updates: PlayerRoundUpdate[], isFinalRound: boolean = false) => {
   const batch = writeBatch(db);
+  
+  let winnerId: string | null = null;
+  if (isFinalRound) {
+    const maxPoints = Math.max(...updates.map(u => u.pointsDelta));
+    const leads = updates.filter(u => u.pointsDelta === maxPoints);
+    if (leads.length > 1) {
+      throw new Error("TIE_DETECTED: Multiple players have the highest score. start another round to break the tie.");
+    }
+    winnerId = leads[0].uid;
+  }
 
   for (const update of updates) {
     const pRef = doc(db, "players", update.uid);
@@ -121,11 +134,12 @@ export const finalizeRoundResults = async (updates: PlayerRoundUpdate[]) => {
   // Set phase to standby after processing all updates
   const gameStateRef = doc(db, "system", "gameState");
   batch.update(gameStateRef, {
-    phase: "standby",
+    phase: isFinalRound ? "game_over" : "standby",
+    winnerId: winnerId,
     results: null,
-    displayMessage: "Round Finalized. Prepare for the next trial.",
+    displayMessage: isFinalRound ? "THE GAMES HAVE ENDED." : "Round Finalized. Prepare for the next trial.",
     submissionsCount: 0,
-    currentSlot: increment(1)
+    currentSlot: isFinalRound ? 99 : increment(1)
   });
 
   await batch.commit();

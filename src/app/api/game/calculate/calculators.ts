@@ -12,7 +12,10 @@ export function calculateA1(submissions: Submission[], config: GameSlotConfig): 
   
   const sum = submissions.reduce((acc, curr) => acc + Number(curr.value || 0), 0);
   const average = sum / submissions.length;
-  const target = average * (2/3);
+  
+  // Make multiplier configurable (default to 2/3)
+  const multiplier = config.config.gameSpecificConfig?.multiplier ?? (2/3);
+  const target = average * multiplier;
 
   submissions.forEach(sub => {
     sub.distance = Math.abs(Number(sub.value || 0) - target);

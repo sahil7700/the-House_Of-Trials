@@ -116,8 +116,8 @@ export default function AdminDashboard() {
     try {
       const { runGenericCalculator } = await import("@/app/api/game/calculate/calculators");
       
-      if (!currentSlotConfig) {
-        throw new Error("Invalid slot config");
+      if (!currentSlotConfig && (!gameState.currentGameId || gameState.currentGameId === "OFFLINE")) {
+        throw new Error("Invalid slot config. An active or generic game ID must be present.");
       }
 
       // Build submissions from the already-loaded players state (avoids querying

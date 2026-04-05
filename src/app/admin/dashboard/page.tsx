@@ -1258,6 +1258,8 @@ export default function AdminDashboard() {
                             <option value="B8">B8: Information Cascade {getGamePlayCount("B8") > 0 ? `[Played ${getGamePlayCount("B8")}]` : ""}</option>
                             <option value="C9">C9: Sequence Match {getGamePlayCount("C9") > 0 ? `[Played ${getGamePlayCount("C9")}]` : ""}</option>
                             <option value="C10">C10: Peak Finder {getGamePlayCount("C10") > 0 ? `[Played ${getGamePlayCount("C10")}]` : ""}</option>
+                            <option value="LEMONS">Market of Lemons (Trading) {getGamePlayCount("LEMONS") > 0 ? `[Played ${getGamePlayCount("LEMONS")}]` : ""}</option>
+                            <option value="SILENCE">Pluralistic Silence (Social) {getGamePlayCount("SILENCE") > 0 ? `[Played ${getGamePlayCount("SILENCE")}]` : ""}</option>
                             <option value="OFFLINE">Offline: Manual/Physical Trial {getGamePlayCount("OFFLINE") > 0 ? `[Played ${getGamePlayCount("OFFLINE")}]` : ""}</option>
                           </select>
                         </div>

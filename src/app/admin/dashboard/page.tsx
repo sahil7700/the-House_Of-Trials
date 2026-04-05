@@ -830,7 +830,7 @@ export default function AdminDashboard() {
                                 return (
                                   <tr key={p.id} className={update.status === "eliminated" ? "bg-primary/10" : ""}>
                                     <td className="p-2 font-bold">{p.name} <span className="opacity-50 font-normal">({p.playerId})</span></td>
-                                    <td className="p-2 text-center text-secondary font-mono">{p.currentSubmission ?? "—"}</td>
+                                    <td className="p-2 text-center text-secondary font-mono">{typeof p.currentSubmission === "object" && p.currentSubmission !== null ? (p.currentSubmission.value ?? JSON.stringify(p.currentSubmission)) : (p.currentSubmission ?? "—")}</td>
                                     <td className="p-2 text-center">
                                       <input 
                                         type="number" 

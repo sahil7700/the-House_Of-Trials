@@ -174,6 +174,41 @@ export default function AdminDisplay() {
               <div className="mt-8 text-primary text-4xl animate-bounce">♠</div>
             </motion.div>
           )}
+
+          {/* Phase: Game Over - Winner Reveal */}
+          {gameState.phase === "game_over" && (
+            <motion.div 
+              key="game_over"
+              initial={{ opacity: 0, scale: 0.5 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 2, type: "spring" }}
+              className="text-center w-full space-y-12"
+            >
+              <div className="space-y-4">
+                <h2 className="text-4xl font-mono text-secondary tracking-[0.5em] uppercase drop-shadow-glow-gold">Championship Complete</h2>
+                <div className="text-primary text-6xl">🏆</div>
+              </div>
+
+              <div className="relative py-12">
+                 <div className="absolute inset-0 bg-secondary/10 blur-3xl rounded-full" />
+                 <h1 className="relative text-9xl font-serif tracking-widest text-textDefault drop-shadow-[0_0_30px_rgba(232,232,240,0.8)] uppercase">
+                   {players.find(p => p.id === gameState.winnerId)?.name || "The Victor"}
+                 </h1>
+                 <p className="text-secondary font-mono tracking-widest uppercase mt-6 text-2xl">Grand Champion</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-8 max-w-2xl mx-auto border-t border-border pt-12">
+                 <div className="text-left">
+                    <p className="text-textMuted text-xs uppercase mb-2">Final Score</p>
+                    <p className="text-4xl font-serif text-textDefault">{players.find(p => p.id === gameState.winnerId)?.points || 0} PTS</p>
+                 </div>
+                 <div className="text-right">
+                    <p className="text-textMuted text-xs uppercase mb-2">Tournament Status</p>
+                    <p className="text-4xl font-serif text-secondary uppercase tracking-widest">Immortal</p>
+                 </div>
+              </div>
+            </motion.div>
+          )}
           
         </AnimatePresence>
       </div>

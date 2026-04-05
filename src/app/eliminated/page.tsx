@@ -129,6 +129,20 @@ export default function EliminatedPage() {
               ✓ Revived! Redirecting to lobby...
             </motion.div>
           )}
+
+          {gameState?.phase === "game_over" && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="border-2 border-secondary bg-secondary/5 p-6 space-y-4"
+            >
+              <h2 className="text-secondary font-serif text-2xl uppercase tracking-widest">Tournament Concluded</h2>
+              <p className="text-textMuted text-xs font-mono uppercase">A Champion has been crowned.</p>
+              <div className="py-2 px-4 bg-secondary/20 inline-block">
+                  <span className="text-secondary font-bold tracking-widest">VICTORY ASCENDED</span>
+              </div>
+            </motion.div>
+          )}
         </AnimatePresence>
 
         <div className="pt-4 space-y-8">

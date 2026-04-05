@@ -6,7 +6,7 @@ import { PlayerData } from "./player-service";
 // V2 ARCHITECTURE - GAME SLOTS
 // ==========================================
 
-export type GamePhase = "lobby" | "active" | "locked" | "calculating" | "reveal" | "confirm" | "standby";
+export type GamePhase = "lobby" | "active" | "locked" | "calculating" | "reveal" | "confirm" | "standby" | "game_over";
 export type TieBreakerRule = "eliminate_all" | "eliminate_none" | "admin";
 export type EliminationMode = "fixed" | "percentage" | "threshold" | "majority";
 
@@ -55,6 +55,9 @@ export interface GameState {
   displayMessage: string | null;
   emergencyPause: boolean;
   wildEntryOpen: boolean; // admin can open late registration mid-game
+  roundType: "standard" | "semi-final" | "final";
+  winnerId: string | null;
+  gameHistory: Record<string, number>; // gameId -> playCount
 }
 
 // ==========================================

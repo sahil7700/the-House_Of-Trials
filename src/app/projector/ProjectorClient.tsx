@@ -133,12 +133,12 @@ export default function ProjectorClient() {
 
     if (isLobby) {
       return (
-        <div className="flex flex-col items-center justify-center h-full space-y-12 animate-fade-in z-20">
-           <div className="text-secondary text-[120px] mb-8 animate-pulse text-shadow-glow">
+        <div className="flex flex-col items-center justify-center h-full space-y-8 md:space-y-12 animate-fade-in z-20 px-4 text-center">
+           <div className="text-secondary text-7xl md:text-[100px] lg:text-[120px] mb-4 md:mb-8 animate-pulse drop-shadow-glow">
               <SuitCycler />
            </div>
-           <h1 className="text-[100px] font-serif text-white tracking-[0.2em] uppercase leading-none drop-shadow-glow">House of Trials</h1>
-           <p className="text-3xl text-textMuted uppercase tracking-widest font-mono">
+           <h1 className="text-5xl md:text-7xl lg:text-[100px] font-serif text-white tracking-[0.2em] uppercase leading-none drop-shadow-glow">House of Trials</h1>
+           <p className="text-xl md:text-3xl text-textMuted uppercase tracking-widest font-mono">
              {gameState.phase === "game_over" ? "TOURNAMENT CONCLUDED" : `${gameState.currentRoundTitle || currentSlotConfig?.gameName || "Preparing"} — Stand By`}
            </p>
         </div>
@@ -235,15 +235,15 @@ export default function ProjectorClient() {
       }
 
       return (
-        <div className="flex flex-col items-center justify-center h-full space-y-16 animate-fade-in z-20 w-3/4">
-           <h2 className="text-[80px] font-serif text-white tracking-widest uppercase text-center leading-tight">
+        <div className="flex flex-col items-center justify-center h-full space-y-8 md:space-y-16 animate-fade-in z-20 w-[90%] md:w-3/4">
+           <h2 className="text-4xl md:text-6xl lg:text-[80px] font-serif text-white tracking-widest uppercase text-center leading-tight">
              {activeGameId === "C9" && gameState.phase === "active_a" ? "Step 1: Create your secret sequence" :
               activeGameId === "C9" && gameState.phase === "active_b" ? "Step 2: Guess your opponent's sequence" :
               gameState.currentRoundTitle || "Submit Your Decision"}
            </h2>
            
            {timeLeft !== null && (
-             <div className="text-[200px] font-mono font-bold leading-none tracking-widest text-primary drop-shadow-glow-red">
+             <div className="text-[120px] md:text-[200px] font-mono font-bold leading-none tracking-widest text-primary drop-shadow-glow-red">
                {timeLeft < 10 ? `0${timeLeft}` : timeLeft}
              </div>
            )}
@@ -272,12 +272,12 @@ export default function ProjectorClient() {
 
     if (isLocked) {
       return (
-        <div className="flex flex-col items-center justify-center h-full space-y-12 animate-fade-in z-20">
-           <h2 className="text-[100px] font-serif text-white tracking-widest uppercase drop-shadow-glow text-center">
+        <div className="flex flex-col items-center justify-center h-full space-y-8 md:space-y-12 animate-fade-in z-20 px-4 text-center">
+           <h2 className="text-5xl md:text-[80px] lg:text-[100px] font-serif text-white tracking-widest uppercase drop-shadow-glow">
              {gameState.currentRoundTitle || "All submissions received."}
            </h2>
-           <p className="text-4xl text-textMuted uppercase tracking-widest font-mono pt-8">Calculating results</p>
-           <div className="flex gap-4 pt-12">
+           <p className="text-2xl md:text-4xl text-textMuted uppercase tracking-widest font-mono pt-4 md:pt-8">Calculating results</p>
+           <div className="flex gap-4 pt-8 md:pt-12">
               <div className="w-6 h-6 bg-secondary rounded-full animate-bounce" style={{ animationDelay: "0ms" }}></div>
               <div className="w-6 h-6 bg-secondary rounded-full animate-bounce" style={{ animationDelay: "150ms" }}></div>
               <div className="w-6 h-6 bg-secondary rounded-full animate-bounce" style={{ animationDelay: "300ms" }}></div>

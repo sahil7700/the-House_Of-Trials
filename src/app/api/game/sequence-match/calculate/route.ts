@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/firebase";
-import { collection, doc, getDoc, getDocs, updateDoc, writeBatch } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 
 interface TargetPair {
   pairId: string;
@@ -95,23 +95,6 @@ export async function POST(req: NextRequest) {
         // "admin" leaves them alone, and admin decides later
       }
     }
-
-    // Write all pair results back to pairs collection
-    const batch = writeBatch(db);
-    batch.update(pairsDocRef, { pairs });
-
-    // Update gameState results
-    const gameStateRef = doc(db, "system", "gameState");
-    batch.update(gameStateRef, {
-      results: {
-        pairs,
-        eliminatedPlayerIds: eliminatedIds,
-        message: "Calculations Complete"
-      },
-      phase: "reveal"
-    });
-
-    await batch.commit();
 
     return NextResponse.json({ success: true, pairs, eliminatedPlayerIds: eliminatedIds });
   } catch (error: any) {

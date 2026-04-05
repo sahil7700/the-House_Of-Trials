@@ -93,10 +93,14 @@ export default function GameUI() {
 
   const handleSubmission = async (val: any) => {
     if (!user) return;
-    await submitGameInput(user.uid, player.name, gameState.currentSlot, gameState.currentGameId, val);
+    await submitGameInput(user.uid, player.name, gameState.currentSlot, activeGameId, val);
   };
 
   const isLocked = gameState.phase === "locked" || gameState.phase === "calculating" || gameState.phase === "reveal" || gameState.phase === "confirm";
+
+  // Use slot config's gameId as the authoritative game type when a pre-built slot is active.
+  // For dynamic rounds (no slot config) fall back to gameState.currentGameId.
+  const activeGameId = currentSlotConfig?.gameId || gameState.currentGameId;
 
   const renderGameLogic = () => {
      const commonProps = {
@@ -109,7 +113,7 @@ export default function GameUI() {
         gameSpecificConfig: (gameState as any).gameSpecificConfig
      };
 
-     switch (gameState.currentGameId) {
+     switch (activeGameId) {
        case "A1": return <GameA1 {...commonProps} />;
        case "A2": return <GameA2 {...commonProps} />;
        case "A3": return <GameA3 {...commonProps} />;
@@ -171,7 +175,7 @@ export default function GameUI() {
            </motion.div>
         )}
         
-        {gameState.phase === "reveal" && gameState.results?.eliminatedPlayerIds?.includes(player.id) && !["A1", "A2", "A3", "A4", "B7", "C10"].includes(gameState.currentGameId) && (
+        {gameState.phase === "reveal" && gameState.results?.eliminatedPlayerIds?.includes(player.id) && !["A1", "A2", "A3", "A4", "B7", "C10"].includes(activeGameId) && (
            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }} className="fixed inset-0 z-50 bg-[#0a0a0f] border-8 border-primary flex items-center justify-center p-8">
              <div className="text-center space-y-6">
                 <div className="text-primary text-6xl drop-shadow-glow-red animate-pulse">☠</div>
@@ -181,7 +185,7 @@ export default function GameUI() {
            </motion.div>
         )}
 
-        {gameState.phase === "reveal" && !gameState.results?.eliminatedPlayerIds?.includes(player.id) && player.status !== "eliminated" && !["A1", "A2", "A3", "A4", "B7", "C10"].includes(gameState.currentGameId) && (
+        {gameState.phase === "reveal" && !gameState.results?.eliminatedPlayerIds?.includes(player.id) && player.status !== "eliminated" && !["A1", "A2", "A3", "A4", "B7", "C10"].includes(activeGameId) && (
            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1.5 }} className="fixed inset-0 z-50 bg-secondary/10 flex items-center justify-center pointer-events-none">
              <div className="text-center text-secondary drop-shadow-glow-gold animate-pulse">
                 <h1 className="font-serif uppercase tracking-[0.2em] text-4xl">Survived</h1>

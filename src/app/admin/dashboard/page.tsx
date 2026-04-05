@@ -135,6 +135,8 @@ export default function AdminDashboard() {
   }
 
   const currentSlotConfig = eventConfig.slots.find(s => s.slotNumber === gameState.currentSlot);
+  // Authoritative game ID: slot config takes priority over stale gameState.currentGameId
+  const activeGameId = currentSlotConfig?.gameId || gameState.currentGameId;
   
   const totalAlive = players.filter(p => p.status === "alive").length;
   const submissionsCount = players.filter(p => p.currentSubmission !== null && p.status === "alive").length;
@@ -147,7 +149,7 @@ export default function AdminDashboard() {
     try {
       const { runGenericCalculator } = await import("@/app/api/game/calculate/calculators");
       
-      if (!currentSlotConfig && (!gameState.currentGameId || gameState.currentGameId === "OFFLINE")) {
+      if (!currentSlotConfig && (!activeGameId || activeGameId === "OFFLINE")) {
         throw new Error("Invalid slot config. An active or generic game ID must be present.");
       }
 
@@ -174,7 +176,7 @@ export default function AdminDashboard() {
       // For dynamic orchestration, we might not have a formal SlotConfig in the DB.
       // We'll use the one we found, or a default fallback based on the LIVE state.
       const calcConfig = currentSlotConfig || {
-        gameId: gameState.currentGameId,
+        gameId: activeGameId,
         config: {
           eliminationValue: 1,
           gameSpecificConfig: {
@@ -418,7 +420,7 @@ export default function AdminDashboard() {
               
               <h2 className="font-serif text-3xl tracking-widest uppercase text-primary border-b border-border pb-4 drop-shadow-glow-red flex justify-between items-center">
                 <span>{gameState.currentRoundTitle || currentSlotConfig?.gameName}</span>
-                <span className="text-xs text-textMuted font-mono">ID: {gameState.currentGameId}</span>
+                <span className="text-xs text-textMuted font-mono">ID: {activeGameId}</span>
               </h2>
 
               <div className="flex gap-2 w-full text-[10px] sm:text-xs">
@@ -482,7 +484,7 @@ export default function AdminDashboard() {
                      </div>
 
                      <div className="w-full pt-4">
-                        <AdminGameStats gameState={gameState} players={players} onUpdateGameState={updateGameState} />
+                        <AdminGameStats gameState={gameState} players={players} onUpdateGameState={updateGameState} activeGameId={activeGameId} />
                      </div>
                   </div>
                 )}
@@ -523,7 +525,7 @@ export default function AdminDashboard() {
                         </div>
                       </div>
 
-                      {gameState.currentGameId === "A3" && gameState.results?.pairs && (
+                      {activeGameId === "A3" && gameState.results?.pairs && (
                          <div className="space-y-4">
                             <h3 className="text-xs uppercase tracking-widest text-secondary border-b border-secondary pb-2">A3 Pair Results ({gameState.results.pairs.length} pairs)</h3>
                             <div className="overflow-x-auto max-h-[300px] border border-border">

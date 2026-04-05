@@ -20,7 +20,7 @@ export default function AdminLogin() {
 
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      router.push("/admin/dashboard");
+      router.push("/admin/builder");
     } catch (err: any) {
       console.error(err);
       setError("Unauthorized access.");

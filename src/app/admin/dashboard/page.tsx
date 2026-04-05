@@ -10,7 +10,8 @@ import { db } from "@/lib/firebase";
 import { PlayerData } from "@/lib/services/player-service";
 import AdminGameStats from "./components/AdminGameStats";
 
-const PHASES: GamePhase[] = ["lobby", "active", "locked", "calculating", "reveal", "confirm", "standby"];
+const STANDARD_PHASES: GamePhase[] = ["lobby", "active", "locked", "calculating", "reveal", "confirm", "standby"];
+const C9_PHASES: GamePhase[] = ["lobby", "active_a", "locked_a", "active_b", "locked_b", "calculating", "reveal", "confirm", "standby"];
 
 export default function AdminDashboard() {
   const { user, loading: authLoading } = useAuth();
@@ -92,11 +93,15 @@ export default function AdminDashboard() {
 
   // Auto-lock when all alive players have submitted
   useEffect(() => {
-    if (!gameState || gameState.phase !== "active") return;
+    if (!gameState) return;
+    const isAct = gameState.phase === "active" || gameState.phase === "active_a" || gameState.phase === "active_b";
+    if (!isAct) return;
     const totalAlive = players.filter(p => p.status === "alive").length;
     const submitted = players.filter(p => p.currentSubmission !== null && p.status === "alive").length;
     if (totalAlive > 0 && submitted >= totalAlive) {
-      updateGameState({ phase: "locked" });
+      if (gameState.phase === "active") updateGameState({ phase: "locked" });
+      if (gameState.phase === "active_a") updateGameState({ phase: "locked_a" });
+      if (gameState.phase === "active_b") updateGameState({ phase: "locked_b" });
     }
   }, [players, gameState]);
 
@@ -177,8 +182,6 @@ export default function AdminDashboard() {
       }
 
       // Run Dynamic Calculator
-      // For dynamic orchestration, we might not have a formal SlotConfig in the DB.
-      // We'll use the one we found, or a default fallback based on the LIVE state.
       const calcConfig = currentSlotConfig || {
         gameId: activeGameId,
         config: {
@@ -189,6 +192,36 @@ export default function AdminDashboard() {
           }
         }
       };
+
+      if (activeGameId === "B6") {
+         const res = await fetch("/api/game/bidding-survival/calculate", {
+            method: "POST", body: JSON.stringify({ slotNumber: gameState.currentSlot, gameId: "B6", config: calcConfig.config })
+         });
+         const data = await res.json();
+         if (!data.success) throw new Error(data.error);
+         setCalculating(false);
+         return;
+      }
+      
+      if (activeGameId === "B8") {
+         const res = await fetch("/api/game/information-cascade/calculate", {
+            method: "POST", body: JSON.stringify({ slotNumber: gameState.currentSlot, gameId: "B8", config: calcConfig.config, gameSpecificConfig: gameState.gameSpecificConfig })
+         });
+         const data = await res.json();
+         if (!data.success) throw new Error(data.error);
+         setCalculating(false);
+         return;
+      }
+
+      if (activeGameId === "C9") {
+         const res = await fetch("/api/game/sequence-match/calculate", {
+            method: "POST", body: JSON.stringify({ slotNumber: gameState.currentSlot, gameId: "C9", config: calcConfig.config })
+         });
+         const data = await res.json();
+         if (!data.success) throw new Error(data.error);
+         setCalculating(false);
+         return;
+      }
 
       const { results, eliminatedPlayerIds } = runGenericCalculator(submissions, calcConfig as any);
 
@@ -205,6 +238,45 @@ export default function AdminDashboard() {
       alert("Failed to calculate: " + e.message);
     }
     setCalculating(false);
+  };
+
+  const handleStartPhaseB = async () => {
+    try {
+      setCalculating(true);
+      const { writeBatch, doc, collection, getDocs, getDoc, serverTimestamp } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase");
+      
+      const playersSnap = await getDocs(collection(db, "players"));
+      const pairSnap = await getDoc(doc(db, "pairs", String(gameState?.currentSlot)));
+      
+      const batch = writeBatch(db);
+      
+      if (pairSnap.exists()) {
+         const pairsData = pairSnap.data().pairs || [];
+         pairsData.forEach((p: any) => {
+            const pa: any = playersSnap.docs.find(d => d.id === p.playerAId)?.data();
+            const pb: any = playersSnap.docs.find(d => d.id === p.playerBId)?.data();
+            if (pa?.currentSubmission?.type === "sequence") p.playerA_sequence = pa.currentSubmission.value;
+            if (pb?.currentSubmission?.type === "sequence") p.playerB_sequence = pb.currentSubmission.value;
+         });
+         batch.update(pairSnap.ref, { pairs: pairsData });
+      }
+      
+      playersSnap.docs.forEach(d => batch.update(d.ref, { currentSubmission: null, submittedAt: null }));
+      
+      await batch.commit();
+      
+      await updateGameState({ 
+         phase: "active_b", 
+         submissionsCount: 0, 
+         timerStartedAt: serverTimestamp() 
+      });
+      setCalculating(false);
+    } catch (e: any) {
+      console.error(e);
+      alert("Failed to transition to Phase B");
+      setCalculating(false);
+    }
   };
 
   const handleFinalizeResults = async () => {
@@ -433,11 +505,11 @@ export default function AdminDashboard() {
                 <span className="text-xs text-textMuted font-mono">ID: {activeGameId}</span>
               </h2>
 
-              <div className="flex gap-2 w-full text-[10px] sm:text-xs">
-                {PHASES.map((p, i) => {
+              <div className="flex gap-2 w-full text-[10px] sm:text-xs overflow-x-auto pb-2">
+                {(activeGameId === "C9" ? C9_PHASES : STANDARD_PHASES).map((p, i) => {
                   const isActive = gameState.phase === p;
                   return (
-                    <div key={p} className={`flex-1 border p-2 text-center uppercase tracking-widest ${isActive ? 'bg-secondary text-background font-bold' : 'bg-surface border-border text-textMuted'}`}>
+                    <div key={p} className={`flex-1 border p-2 text-center uppercase tracking-widest whitespace-nowrap min-w-[80px] ${isActive ? 'bg-secondary text-background font-bold' : 'bg-surface border-border text-textMuted'}`}>
                       {i + 1}. {p}
                     </div>
                   );
@@ -606,16 +678,30 @@ export default function AdminDashboard() {
                   </div>
                 )}
                 
-                {gameState.phase === "active" && (
+                {(gameState.phase === "active" || gameState.phase === "active_a" || gameState.phase === "active_b") && (
                   <div className="flex flex-col items-center space-y-6">
                     <div className="flex w-full justify-between items-end border-b border-border pb-4">
                        <div>
                          <p className="text-secondary text-xs uppercase tracking-widest mb-1">Submissions Received</p>
                          <p className="text-3xl">{submissionsCount} <span className="text-sm text-textMuted">/ {totalAlive} alive</span></p>
                        </div>
-                       <button onClick={() => setPhase("locked")} className="bg-surface border border-border hover:bg-border px-6 py-2 tracking-widest uppercase transition-colors">
-                          Force Lock Submissions
-                       </button>
+                       <div className="flex gap-2">
+                         {gameState.phase === "active" && (
+                           <button onClick={() => setPhase("locked")} className="bg-surface border border-border hover:bg-border px-6 py-2 tracking-widest uppercase transition-colors text-xs">
+                              Force Lock Submissions
+                           </button>
+                         )}
+                         {gameState.phase === "active_a" && (
+                           <button onClick={() => setPhase("locked_a")} className="bg-surface border border-border hover:bg-border px-6 py-2 tracking-widest uppercase transition-colors text-xs">
+                              Lock A & Open B
+                           </button>
+                         )}
+                         {gameState.phase === "active_b" && (
+                           <button onClick={() => setPhase("locked_b")} className="bg-surface border border-border hover:bg-border px-6 py-2 tracking-widest uppercase transition-colors text-xs">
+                              Force Lock B
+                           </button>
+                         )}
+                       </div>
                     </div>
                      <div className="w-full bg-background h-6 border border-border relative overflow-hidden">
                        <div 
@@ -639,15 +725,27 @@ export default function AdminDashboard() {
                   </div>
                 )}
                 
-                {gameState.phase === "locked" && (
+                {(gameState.phase === "locked" || gameState.phase === "locked_a" || gameState.phase === "locked_b") && (
                   <div className="flex flex-col items-center justify-center space-y-6 h-full p-4">
                     <p className="text-sm text-textMuted text-center">Input is locked. {submissionsCount} submissions captured.</p>
-                    <button 
-                       onClick={handleCalculateResult} disabled={calculating}
-                       className="bg-surface border border-border border-l-4 border-l-secondary px-8 py-3 tracking-widest uppercase transition-colors hover:bg-white/5"
-                    >
-                      {calculating ? "Processing logic..." : "RUN CALCULATION LOGIC"}
-                    </button>
+                    
+                    {gameState.phase === "locked_a" && (
+                      <button 
+                         onClick={handleStartPhaseB} disabled={calculating}
+                         className="bg-secondary/20 text-secondary border border-secondary px-8 py-3 tracking-widest uppercase transition-colors hover:bg-secondary hover:text-background"
+                      >
+                        {calculating ? "Processing..." : "Start Phase B (Guess Opponent)"}
+                      </button>
+                    )}
+
+                    {(gameState.phase === "locked" || gameState.phase === "locked_b") && (
+                      <button 
+                         onClick={handleCalculateResult} disabled={calculating}
+                         className="bg-surface border border-border border-l-4 border-l-secondary px-8 py-3 tracking-widest uppercase transition-colors hover:bg-white/5"
+                      >
+                        {calculating ? "Processing logic..." : "RUN CALCULATION LOGIC"}
+                      </button>
+                    )}
                   </div>
                 )}
 

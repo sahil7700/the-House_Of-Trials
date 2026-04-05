@@ -12,10 +12,10 @@ const AVAILABLE_GAMES = [
   { id: "A3", name: "A3: Traveler's Dilemma" },
   { id: "A4", name: "A4: Borda Sabotage (Strategic Vote)" },
   { id: "B5", name: "B5: Nashify / Black Hole (Physical puzzle)" },
-  { id: "B6", name: "B6: Market of Lemons (Physical)" },
+  { id: "B6", name: "B6: Bidding Survival" },
   { id: "B7", name: "B7: Braess Paradox" },
-  { id: "B8", name: "B8: Information Cascade (Physical)" },
-  { id: "C9", name: "C9: Pluralistic Silence" },
+  { id: "B8", name: "B8: Information Cascade" },
+  { id: "C9", name: "C9: Sequence Match" },
   { id: "C10", name: "C10: Peak Finder" }
 ];
 

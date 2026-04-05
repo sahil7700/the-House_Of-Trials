@@ -6,7 +6,7 @@ import { PlayerData } from "./player-service";
 // V2 ARCHITECTURE - GAME SLOTS
 // ==========================================
 
-export type GamePhase = "lobby" | "active" | "locked" | "calculating" | "reveal" | "confirm" | "standby" | "game_over";
+export type GamePhase = "lobby" | "active" | "locked" | "calculating" | "reveal" | "confirm" | "standby" | "game_over" | "active_a" | "locked_a" | "active_b" | "locked_b";
 export type TieBreakerRule = "eliminate_all" | "eliminate_none" | "admin";
 export type EliminationMode = "fixed" | "percentage" | "threshold" | "majority";
 
@@ -60,6 +60,12 @@ export interface GameState {
   customOptions?: string[];
   gameSpecificConfig?: any;
   gameHistory: Record<string, number>; // gameId -> playCount
+  pairingComplete?: boolean;
+  projectorPush?: {
+    type: string;
+    content: any;
+    pushedAt: any;
+  } | null;
 }
 
 // ==========================================

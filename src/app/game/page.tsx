@@ -103,7 +103,8 @@ export default function GameUI() {
         onSubmit: handleSubmission,
         isLocked,
         currentSubmission: player.currentSubmission ?? null,
-        results: gameState.phase === "reveal" || gameState.phase === "confirm" ? gameState.results : null
+        results: gameState.phase === "reveal" || gameState.phase === "confirm" ? gameState.results : null,
+        playerId: player.id
      };
 
      switch (gameState.currentGameId) {

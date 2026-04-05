@@ -8,6 +8,7 @@ import { updateGameState, startTimer, confirmEliminations, emergencyPauseToggle,
 import { collection, onSnapshot, query, doc, writeBatch, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { PlayerData } from "@/lib/services/player-service";
+import AdminGameStats from "./components/AdminGameStats";
 
 const PHASES: GamePhase[] = ["lobby", "active", "locked", "calculating", "reveal", "confirm", "standby"];
 
@@ -397,12 +398,25 @@ export default function AdminDashboard() {
                           Force Lock Submissions
                        </button>
                     </div>
-                    <div className="w-full bg-background h-6 border border-border relative overflow-hidden">
+                     <div className="w-full bg-background h-6 border border-border relative overflow-hidden">
                        <div 
                          className="absolute left-0 top-0 bottom-0 bg-secondary transition-all duration-500" 
                          style={{ width: `${totalAlive > 0 ? (submissionsCount / totalAlive) * 100 : 0}%` }}
                        />
-                    </div>
+                     </div>
+                     
+                     <div className="w-full flex justify-end gap-2">
+                         <button 
+                             onClick={() => updateGameState({ timerDuration: (gameState.timerDuration || 60) + 30 })}
+                             className="text-[10px] uppercase border border-border px-3 py-1 text-textMuted hover:text-secondary hover:border-secondary transition-colors"
+                         >
+                             +30s Timer
+                         </button>
+                     </div>
+
+                     <div className="w-full pt-4">
+                        <AdminGameStats gameState={gameState} players={players} />
+                     </div>
                   </div>
                 )}
                 

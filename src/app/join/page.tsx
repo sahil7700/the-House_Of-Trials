@@ -83,7 +83,7 @@ export default function JoinPage() {
     setError("");
 
     try {
-      const isWildCard = !isFirstLobby && isWildEntryOpen;
+      const isWildCard = !isNewEvent && isWildEntryOpen;
       await registerPlayer(name, college, phone, isWildCard);
       router.push("/lobby");
     } catch (err: any) {
@@ -93,10 +93,14 @@ export default function JoinPage() {
     }
   };
 
-  // Determine if registration is currently allowed
-  const isFirstLobby = gameState?.phase === "lobby" && gameState?.currentSlot === 1;
+  // Determine if registration is currently allowed.
+  // A new event starts at slot 1. Allow join any time we're at slot 1
+  // UNLESS the game is actively running (active/locked/calculating/reveal).
+  const IN_PROGRESS_PHASES = ["active", "active_a", "active_b", "locked", "locked_a", "locked_b", "calculating", "reveal", "confirm", "game_over"];
+  const isNewEvent = gameState?.currentSlot === 1 && !IN_PROGRESS_PHASES.includes(gameState?.phase ?? "");
   const isWildEntryOpen = gameState?.wildEntryOpen === true;
-  const canRegister = isFirstLobby || isWildEntryOpen;
+  const canRegister = isNewEvent || isWildEntryOpen;
+
 
   if (checkingState) {
     return (
@@ -140,7 +144,7 @@ export default function JoinPage() {
         className="w-full max-w-md bg-surface border border-border p-8 shadow-[0_0_8px_rgba(192,57,43,0.1)] relative z-10"
       >
         <div className="text-center mb-8">
-          {isWildEntryOpen && !isFirstLobby && (
+          {isWildEntryOpen && !isNewEvent && (
             <div className="mb-4 px-3 py-1 border border-secondary/50 bg-secondary/10 text-secondary text-xs font-mono uppercase tracking-widest inline-block">
               ⚡ Wild Card Entry Open
             </div>

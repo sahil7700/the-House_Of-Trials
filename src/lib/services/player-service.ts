@@ -1,5 +1,5 @@
 import { db, auth } from "@/lib/firebase";
-import { doc, setDoc, getDoc, serverTimestamp, collection, query, where, getDocs, onSnapshot } from "firebase/firestore";
+import { doc, setDoc, getDoc, serverTimestamp, collection, query, where, getDocs, onSnapshot, updateDoc } from "firebase/firestore";
 import { signInAnonymously } from "firebase/auth";
 
 export interface PlayerData {
@@ -16,6 +16,10 @@ export interface PlayerData {
   currentSubmission: any | null; // useful for dashboard live view
   submittedAt: any | null;
   isWildCard?: boolean;
+  revivalCount?: number; // how many times player used wild card re-entry
+  totalRevivals?: number; // max allowed revivals per event
+  eliminatedAt?: any;
+  lastSeen?: any;
 }
 
 export const registerPlayer = async (name: string, college: string, phone: string, isWildCard: boolean = false) => {
@@ -32,15 +36,17 @@ export const registerPlayer = async (name: string, college: string, phone: strin
     return docSnap.data() as PlayerData;
   }
 
-  // 2.5 Ensure name is unique
-  const nameQuery = query(collection(db, "players"), where("name", "==", name));
+  // 2.5 Ensure name is unique (case-insensitive)
+  const nameQuery = query(
+    collection(db, "players"),
+    where("name", "==", name.trim())
+  );
   const nameSnap = await getDocs(nameQuery);
   if (!nameSnap.empty) {
     throw new Error("A player with this name already exists. Please choose a slightly different name.");
   }
 
-  // 3. Generate unique 4 digit ID (rough uniqueness check can be skipped for prototype)
-  // To avoid duplicates, we will just generate and hope no collisions, or do a tiny loop
+  // 3. Generate unique 4 digit ID
   let playerId = "";
   let isUnique = false;
   while (!isUnique) {
@@ -56,28 +62,69 @@ export const registerPlayer = async (name: string, college: string, phone: strin
   const playerData: PlayerData = {
     id: uid,
     playerId,
-    name,
-    college,
-    phone,
+    name: name.trim(),
+    college: college.trim(),
+    phone: phone?.trim() || "",
     status: isWildCard ? "waiting" : "alive",
     isWildCard,
     points: 0,
     gamesPlayed: 0,
-
     gamesWon: 0,
     joinedAt: serverTimestamp(),
     currentSubmission: null,
     submittedAt: null,
+    revivalCount: 0,
+    totalRevivals: 1, // Default: only 1 wild card re-entry allowed per event
   };
 
   await setDoc(docRef, playerData);
   
-  // Cache the ID locally just in case
   if (typeof window !== "undefined") {
     localStorage.setItem("house_of_trials_player_id", uid);
   }
 
   return playerData;
+};
+
+// Claim wild card re-entry (with revival count limit)
+export const claimWildCard = async (
+  uid: string,
+  maxRevivals: number = 1
+): Promise<{ success: boolean; error?: string }> => {
+  const docRef = doc(db, "players", uid);
+  const docSnap = await getDoc(docRef);
+  
+  if (!docSnap.exists()) {
+    return { success: false, error: "Player not found." };
+  }
+  
+  const data = docSnap.data() as PlayerData;
+  
+  // Check if player is eligible
+  if (data.status !== "eliminated") {
+    return { success: false, error: "You are not eliminated." };
+  }
+  
+  // Check revival count
+  const currentRevivals = data.revivalCount || 0;
+  const maxAllowed = data.totalRevivals ?? maxRevivals;
+  
+  if (currentRevivals >= maxAllowed) {
+    return {
+      success: false,
+      error: `Wild card limit reached. You can only be revived ${maxAllowed} time(s) per event.`,
+    };
+  }
+
+  await updateDoc(docRef, {
+    status: "alive",
+    currentSubmission: null,
+    submittedAt: null,
+    revivalCount: currentRevivals + 1,
+    lastSeen: serverTimestamp(),
+  });
+
+  return { success: true };
 };
 
 export const getPlayer = async (uid: string): Promise<PlayerData | null> => {

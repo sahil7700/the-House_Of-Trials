@@ -4,11 +4,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { PlayerData, subscribeToPlayer } from "@/lib/services/player-service";
+import { PlayerData, subscribeToPlayer, claimWildCard } from "@/lib/services/player-service";
 import { subscribeToGameState, GameState } from "@/lib/services/game-service";
 import { useRouter } from "next/navigation";
-import { doc, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 
 export default function EliminatedPage() {
   const { user, loading } = useAuth();
@@ -17,6 +15,7 @@ export default function EliminatedPage() {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [reviving, setReviving] = useState(false);
   const [revived, setRevived] = useState(false);
+  const [wildCardError, setWildCardError] = useState<string | null>(null);
 
   useEffect(() => {
     if (loading) return;
@@ -26,7 +25,6 @@ export default function EliminatedPage() {
     }
     const unsubPlayer = subscribeToPlayer(user.uid, (p) => {
       setPlayer(p);
-      // If player status is no longer eliminated, redirect to lobby
       if (p && p.status === "alive") {
         router.push("/lobby");
       }
@@ -41,15 +39,16 @@ export default function EliminatedPage() {
   const handleClaimWildCard = async () => {
     if (!user) return;
     setReviving(true);
+    setWildCardError(null);
     try {
-      await updateDoc(doc(db, "players", user.uid), {
-        status: "alive",
-        currentSubmission: null,
-        submittedAt: null,
-      });
-      setRevived(true);
-      // The subscribeToPlayer callback above will detect status change and redirect
+      const result = await claimWildCard(user.uid);
+      if (result.success) {
+        setRevived(true);
+      } else {
+        setWildCardError(result.error || "Failed to claim wild card.");
+      }
     } catch (e) {
+      setWildCardError("An unexpected error occurred. Please try again.");
       console.error(e);
     }
     setReviving(false);
@@ -109,8 +108,18 @@ export default function EliminatedPage() {
               <div className="text-secondary text-2xl">⚡</div>
               <p className="font-mono text-secondary text-xs uppercase tracking-widest font-bold">Wild Card Entry Open</p>
               <p className="font-mono text-textMuted text-sm">
-                The admin has opened a Wild Card window. You can re-enter the game and rejoin as an alive player.
+                The admin has opened a Wild Card window. You can re-enter the game.
               </p>
+              {(player.revivalCount !== undefined) && (
+                <p className="font-mono text-xs text-textMuted/50">
+                  Wild Cards used: {player.revivalCount} / {player.totalRevivals ?? 1}
+                </p>
+              )}
+              {wildCardError && (
+                <p className="font-mono text-primary text-xs uppercase tracking-widest animate-pulse">
+                  {wildCardError}
+                </p>
+              )}
               <button
                 onClick={handleClaimWildCard}
                 disabled={reviving}

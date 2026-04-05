@@ -21,7 +21,6 @@ export async function POST(req: NextRequest) {
 
     const { eliminationMode, eliminationValue, penalty } = config as BiddingSurvivalConfig;
 
-    // 1. Fetch all submissions for this slot
     const submissionsRef = collection(db, "submissions");
     const q = query(submissionsRef, where("slotNumber", "==", slotNumber));
     const snapshot = await getDocs(q);
@@ -37,37 +36,45 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ results: { message: "No submissions" }, eliminatedPlayerIds: [] });
     }
 
-    // 2. Sort bids ascending
+    // Sort bids ascending
     const sorted = [...submissions].sort((a, b) => a.bid - b.bid);
 
-    // 3. Apply elimination rule
-    let cutOffIndex = 0;
+    // Calculate elimination count
+    let elimCount = 0;
     if (eliminationMode === "percentage") {
-      cutOffIndex = Math.floor(sorted.length * (eliminationValue / 100));
+      elimCount = Math.floor(sorted.length * (eliminationValue / 100));
     } else {
-      cutOffIndex = eliminationValue;
+      elimCount = eliminationValue;
     }
 
-    // Make sure we never eliminate everyone unless strictly specified, but let's follow math
-    if (cutOffIndex > sorted.length) cutOffIndex = sorted.length;
+    // Safety: never eliminate everyone (min 1 survivor), cap at all but 1
+    elimCount = Math.min(elimCount, Math.max(0, sorted.length - 1));
+    if (elimCount < 0) elimCount = 0;
 
-    // Handle ties at cutoff
-    const cutOffBid = cutOffIndex > 0 ? sorted[cutOffIndex - 1].bid : 0;
-    
-    // Default tie breaker: eliminate all tied at the cutoff bid who are at or below
-    // (If user wants advanced tie breaker, we'd add it to config, but for now we'll just eliminate anyone <= cutOffBid if they were in the bottom chunk)
-    // Actually, "if tied at cutoff: eliminate ALL tied"
-    const eliminated = sorted.filter(s => s.bid <= cutOffBid);
+    // Find cutoff: the bid value at the elimination boundary
+    // Players at or below this bid value are eliminated
+    const cutOffBid = elimCount > 0 ? sorted[elimCount - 1].bid : 0;
+
+    // Include ALL players with bids at or below the cutoff
+    // This handles ties properly (all tied at cutoff are eliminated together)
+    const eliminated = sorted.filter(s => s.bid <= cutOffBid && elimCount > 0);
     const eliminatedIds = eliminated.map(s => s.playerId);
 
-    // 4. Find highest bid - apply configured penalty
+    // Ensure at least someone survives (safety net)
+    let finalEliminatedIds = eliminatedIds;
+    if (eliminatedIds.length >= sorted.length) {
+      // Remove the highest bidder from elimination as safety net
+      const highestBidder = sorted[sorted.length - 1];
+      finalEliminatedIds = eliminatedIds.filter(id => id !== highestBidder.playerId);
+    }
+
+    // Highest bid
     const highestBid = sorted[sorted.length - 1].bid;
     const highestBidders = sorted.filter(s => s.bid === highestBid);
-    
-    // 5. Update submissions locally and prepare results
+
+    // Histogram
     const histogram: Record<number, number> = {};
     for (let i = 1; i <= 100; i++) histogram[i] = 0;
-
     sorted.forEach(s => {
       histogram[s.bid] = (histogram[s.bid] || 0) + 1;
     });
@@ -75,15 +82,16 @@ export async function POST(req: NextRequest) {
     const highestBidderIds = highestBidders.map(s => s.playerId);
     const results = {
       cutOffBid,
+      elimCount,
       highestBid,
       highestBidderIds,
       penaltyApplied: penalty,
       histogram,
-      eliminatedCount: eliminated.length,
-      survivedCount: sorted.length - eliminated.length
+      eliminatedCount: finalEliminatedIds.length,
+      survivedCount: sorted.length - finalEliminatedIds.length
     };
 
-    return NextResponse.json({ success: true, results, eliminatedPlayerIds: eliminatedIds });
+    return NextResponse.json({ success: true, results, eliminatedPlayerIds: finalEliminatedIds });
   } catch (error: any) {
     console.error("Calculate Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });

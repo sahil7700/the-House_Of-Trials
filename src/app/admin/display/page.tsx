@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { GameState, subscribeToGameState } from "@/lib/services/game-service";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, onSnapshot, query } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { PlayerData } from "@/lib/services/player-service";
 import { motion, AnimatePresence } from "framer-motion";

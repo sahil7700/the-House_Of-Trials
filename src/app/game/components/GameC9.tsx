@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { GameState } from "@/lib/services/game-service";
-import { doc, updateDoc, onSnapshot } from "firebase/firestore";
+import { doc, updateDoc, setDoc, onSnapshot, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -27,7 +27,6 @@ export default function GameC9({ gameState, playerId }: Props) {
   const [opponentName, setOpponentName] = useState<string>("Unknown Opponent");
   const [myResultPair, setMyResultPair] = useState<any>(null);
 
-  // Live listen to pair documents to get opponent's name correctly
   useEffect(() => {
      if (isLobby) return;
      const unsub = onSnapshot(doc(db, "pairs", String(gameState.currentSlot)), async (snap) => {
@@ -36,15 +35,11 @@ export default function GameC9({ gameState, playerId }: Props) {
         const myPair = pairs.find((p: any) => p.playerAId === playerId || p.playerBId === playerId);
         if (myPair) {
            setMyResultPair(myPair);
-           // Find opponent ID
            const oppId = myPair.playerAId === playerId ? myPair.playerBId : myPair.playerAId;
-           // If opponent is myself (dummy pair), handle gracefully
            if (oppId === playerId) {
               setOpponentName("Yourself (Dummy Match)");
               return;
            }
-           // We might not have the player list locally in Game UI easily. We ideally want the admin to have it. 
-           // But since we don't have user profiles embedded in `pairs`, we will fall back to showing Opponent ID.
            setOpponentName(`Opponent #${oppId.substring(0, 4)}`);
         }
      });
@@ -54,8 +49,16 @@ export default function GameC9({ gameState, playerId }: Props) {
   const submitSequence = async () => {
      if (hasSubmittedA) return;
      try {
-       await updateDoc(doc(db, "players", playerId), {
-         currentSubmission: { type: "sequence", value: mySequence }
+       const payload = { type: "sequence", value: mySequence };
+       await updateDoc(doc(db, "players", playerId), { currentSubmission: payload });
+       // Also persist to submissions collection for audit trail
+       await setDoc(doc(db, "submissions", `${gameState.currentSlot}_${playerId}_seq`), {
+         playerId,
+         slotNumber: gameState.currentSlot,
+         gameId: "C9",
+         phase: "A",
+         value: payload,
+         submittedAt: serverTimestamp(),
        });
        setHasSubmittedA(true);
      } catch (e) { console.error(e); }
@@ -64,8 +67,16 @@ export default function GameC9({ gameState, playerId }: Props) {
   const submitGuess = async () => {
      if (hasSubmittedB) return;
      try {
-       await updateDoc(doc(db, "players", playerId), {
-         currentSubmission: { type: "guess", value: myGuess }
+       const payload = { type: "guess", value: myGuess };
+       await updateDoc(doc(db, "players", playerId), { currentSubmission: payload });
+       // Also persist to submissions collection for audit trail
+       await setDoc(doc(db, "submissions", `${gameState.currentSlot}_${playerId}_guess`), {
+         playerId,
+         slotNumber: gameState.currentSlot,
+         gameId: "C9",
+         phase: "B",
+         value: payload,
+         submittedAt: serverTimestamp(),
        });
        setHasSubmittedB(true);
      } catch (e) { console.error(e); }

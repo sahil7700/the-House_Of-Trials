@@ -1,0 +1,92 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "players",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "status", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "players",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "points", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "submissions",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "slotNumber", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "submissions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "slotNumber", "order": "ASCENDING" },
+        { "fieldPath": "playerId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "marketTrades",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "sellerId", "order": "ASCENDING" },
+        { "fieldPath": "slotNumber", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "marketTrades",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "buyerId", "order": "ASCENDING" },
+        { "fieldPath": "slotNumber", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "marketTrades",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "sellerId", "order": "ASCENDING" },
+        { "fieldPath": "slotNumber", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "lemonAssignments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "slotNumber", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "lemonAssignments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "slotNumber", "order": "ASCENDING" },
+        { "fieldPath": "playerId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "adminAuditLog",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "adminAuditLog",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "adminId", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "idempotencyKeys",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "slotNumber", "order": "ASCENDING" }
+      ]
+    }
+  ]
+}

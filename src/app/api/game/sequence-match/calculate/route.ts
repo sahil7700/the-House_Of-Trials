@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/firebase";
-import { collection, doc, getDoc, getDocs } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 
 interface TargetPair {
   pairId: string;
@@ -44,12 +44,25 @@ export async function POST(req: NextRequest) {
     const playersSnap = await getDocs(playersRef);
     const playerDocs = playersSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
 
-    // Apply Phase B guesses
+    // Fetch Phase B submissions from submissions collection (audit source)
+    const submissionsRef = collection(db, "submissions");
+    const guessQ = query(submissionsRef, where("slotNumber", "==", slotNumber), where("gameId", "==", "C9"), where("phase", "==", "B"));
+    const guessSnap = await getDocs(guessQ);
+    const guessSubmissions: Record<string, number[]> = {};
+    guessSnap.docs.forEach(d => {
+      const sub = d.data() as { playerId?: string; value?: { value?: number[] } };
+      if (sub.playerId && sub.value?.value) {
+        guessSubmissions[sub.playerId] = sub.value.value;
+      }
+    });
+
+    // Apply Phase B guesses (from submissions collection, fallback to players collection)
     for (const pair of pairs) {
-       const pa = playerDocs.find(p => p.id === pair.playerAId);
-       const pb = playerDocs.find(p => p.id === pair.playerBId);
-       if (pa?.currentSubmission?.type === "guess") pair.playerA_guess = pa.currentSubmission.value;
-       if (pb?.currentSubmission?.type === "guess") pair.playerB_guess = pb.currentSubmission.value;
+       // Try submissions collection first (authoritative), then fallback to players doc
+       const paGuess = guessSubmissions[pair.playerAId] ?? playerDocs.find(p => p.id === pair.playerAId)?.currentSubmission?.value;
+       const pbGuess = guessSubmissions[pair.playerBId] ?? playerDocs.find(p => p.id === pair.playerBId)?.currentSubmission?.value;
+       if (paGuess) pair.playerA_guess = paGuess;
+       if (pbGuess) pair.playerB_guess = pbGuess;
     }
 
     const pointsDeltaMap: Record<string, number> = {};

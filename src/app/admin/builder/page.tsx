@@ -43,6 +43,8 @@ const GAME_LIBRARY = [
   { id: "B8", name: "Information Cascade",           category: "Web" },
   { id: "C9", name: "Sequence Match",                category: "Web" },
   { id: "C10", name: "Peak Finder",                  category: "Web" },
+  { id: "LEMONS", name: "Market of Lemons",          category: "Hybrid" },
+  { id: "SILENCE", name: "Pluralistic Silence",      category: "Psychological" },
   { id: "OFFLINE", name: "Manual / Physical Trial",  category: "Offline" },
 ];
 

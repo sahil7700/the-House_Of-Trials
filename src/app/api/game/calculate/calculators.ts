@@ -53,12 +53,13 @@ export function calculateA2(submissions: Submission[], config: GameSlotConfig): 
     if (s.value) counts[s.value] = (counts[s.value] || 0) + 1;
   });
 
-  const sortedRanges = Object.entries(counts).sort((a, b) => a[1] - b[1]); // fewest to most
+  const sortedRangesRaw = Object.entries(counts).sort((a, b) => a[1] - b[1]); // fewest to most
+  const sortedRanges = sortedRangesRaw.map(([range, count]) => ({ range, count }));
   
   if (submissions.length === 0) return { results: { majorityRange: null, minorityRange: null, sortedRanges: [], totalPlayers: 0 }, eliminatedPlayerIds: [] };
   
-  const minorityRange = sortedRanges[0][0];
-  const majorityRange = sortedRanges[sortedRanges.length - 1][0];
+  const minorityRange = sortedRangesRaw[0][0];
+  const majorityRange = sortedRangesRaw[sortedRangesRaw.length - 1][0];
   
   const eliminatedPlayerIds = submissions.filter(s => s.value === majorityRange).map(s => s.playerId);
 

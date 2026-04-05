@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" width="600" height="400">
+  <rect width="600" height="400" fill="#0a0a0f"/>
+  <text x="300" y="36" font-size="15" fill="#6b6b80" text-anchor="middle" font-family="monospace" letter-spacing="2">HOW MANY SQUARES ARE IN THIS GRID?</text>
+  <text x="300" y="58" font-size="12" fill="#3a3a4a" text-anchor="middle" font-family="monospace">(count ALL sizes — 1×1, 2×2, 3×3, 4×4)</text>
+
+  <g stroke="#e8e8f0" stroke-width="2" fill="none">
+    <rect x="150" y="80" width="300" height="240"/>
+    <line x1="225" y1="80" x2="225" y2="320"/>
+    <line x1="300" y1="80" x2="300" y2="320"/>
+    <line x1="375" y1="80" x2="375" y2="320"/>
+    <line x1="150" y1="140" x2="450" y2="140"/>
+    <line x1="150" y1="200" x2="450" y2="200"/>
+    <line x1="150" y1="260" x2="450" y2="260"/>
+  </g>
+
+  <text x="130" y="345" font-size="18" fill="#d4a017" font-family="monospace" font-weight="bold">A: 16</text>
+  <text x="250" y="345" font-size="18" fill="#d4a017" font-family="monospace" font-weight="bold">B: 20</text>
+  <text x="370" y="345" font-size="18" fill="#d4a017" font-family="monospace" font-weight="bold">C: 30</text>
+
+  <text x="300" y="385" font-size="12" fill="#3a3a4a" text-anchor="middle" font-family="monospace">HOUSE OF TRIALS</text>
+</svg>

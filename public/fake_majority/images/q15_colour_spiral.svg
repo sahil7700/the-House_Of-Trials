@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" width="600" height="400">
+  <rect width="600" height="400" fill="#0a0a0f"/>
+  <text x="300" y="36" font-size="15" fill="#6b6b80" text-anchor="middle" font-family="monospace" letter-spacing="2">WHAT COLOUR IS THE SPIRAL?</text>
+  <text x="300" y="57" font-size="12" fill="#3a3a4a" text-anchor="middle" font-family="monospace">(look at it — what colour do the spirals appear?)</text>
+
+  <g transform="translate(300,210)">
+    <circle cx="0" cy="0" r="140" fill="none" stroke="#0a0a0f" stroke-width="2"/>
+    <path d="M 0 0 Q 40 -20 70 0 Q 100 20 120 -10 Q 140 -40 130 -80 Q 110 -120 70 -130 Q 20 -140 -30 -120 Q -80 -100 -110 -50 Q -130 0 -110 50 Q -80 100 -30 120 Q 20 135 70 120 Q 110 105 130 70"
+          fill="none" stroke="#1a9e75" stroke-width="8" stroke-linecap="round"/>
+    <path d="M 0 0 Q -30 15 -55 0 Q -80 -15 -95 10 Q -110 35 -100 65 Q -85 95 -55 105 Q -20 115 15 100 Q 50 82 65 50 Q 78 18 65 -15"
+          fill="none" stroke="#378add" stroke-width="8" stroke-linecap="round"/>
+    <path d="M 65 -15 Q 85 -50 70 -80 Q 52 -110 20 -118 Q -15 -128 -45 -110 Q -78 -90 -90 -55"
+          fill="none" stroke="#1a9e75" stroke-width="8" stroke-linecap="round"/>
+    <circle cx="0" cy="0" r="18" fill="#0a0a0f"/>
+    <circle cx="0" cy="0" r="10" fill="#e8e8f0"/>
+  </g>
+
+  <text x="300" y="355" font-size="13" fill="#6b6b80" text-anchor="middle" font-family="monospace">(the green and blue stripes overlap — what do you actually see?)</text>
+
+  <text x="150" y="385" font-size="16" fill="#d4a017" text-anchor="middle" font-family="monospace">A: GREEN + BLUE</text>
+  <text x="440" y="385" font-size="16" fill="#d4a017" text-anchor="middle" font-family="monospace">B: SAME COLOUR</text>
+</svg>

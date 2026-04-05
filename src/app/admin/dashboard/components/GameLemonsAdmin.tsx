@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { GameState } from "@/lib/services/game-service";
 import { PlayerData } from "@/lib/services/player-service";
 import { db } from "@/lib/firebase";
-import { collection, doc, getDocs, addDoc, onSnapshot, query, where, writeBatch, serverTimestamp } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, where, writeBatch, updateDoc } from "firebase/firestore";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface Props {
@@ -19,18 +19,35 @@ export default function GameLemonsAdmin({ gameState, players, onUpdateGameState 
   const isActive = gameState.phase === "active";
   const isReveal = gameState.phase === "reveal" || gameState.phase === "confirm";
 
-  const [goldPct, setGoldPct] = useState(gsc.goldPct ?? 40); // % of sellers who get gold
-  const [sellerPct, setSellerPct] = useState(gsc.sellerPct ?? 50); // % of players who are sellers
+  const [goldPct, setGoldPct] = useState(gsc.goldPct ?? 40);
+  const [sellerPct, setSellerPct] = useState(gsc.sellerPct ?? 50);
   const [assignmentsCreated, setAssignmentsCreated] = useState(gsc.assignmentsCreated || false);
   const [assignments, setAssignments] = useState<any[]>([]);
   const [trades, setTrades] = useState<any[]>([]);
   const [isProcessing, setProcessing] = useState(false);
   const [processError, setProcessError] = useState<string | null>(null);
 
+  // Track if auto-assign has already fired to prevent re-runs
+  const autoAssignedRef = useRef(false);
+
+  // Sync goldPct/sellerPct from gameState when they change externally
+  useEffect(() => {
+    if (gsc.goldPct !== undefined) setGoldPct(gsc.goldPct);
+    if (gsc.sellerPct !== undefined) setSellerPct(gsc.sellerPct);
+    if (gsc.assignmentsCreated !== undefined) setAssignmentsCreated(gsc.assignmentsCreated);
+  }, [gsc.goldPct, gsc.sellerPct, gsc.assignmentsCreated]);
+
   // Watch assignments in real-time
   useEffect(() => {
     const q = query(collection(db, "lemonAssignments"), where("slotNumber", "==", slotNumber));
-    return onSnapshot(q, snap => setAssignments(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    return onSnapshot(q, snap => {
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setAssignments(docs);
+      // Sync assignmentsCreated state from Firestore reality
+      if (docs.length > 0 && !assignmentsCreated) {
+        setAssignmentsCreated(true);
+      }
+    });
   }, [slotNumber]);
 
   // Watch trades
@@ -39,7 +56,35 @@ export default function GameLemonsAdmin({ gameState, players, onUpdateGameState 
     return onSnapshot(q, snap => setTrades(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
   }, [slotNumber]);
 
-  const handleAssignRoles = async () => {
+  // Auto-assign roles when phase becomes "active" and no assignments exist
+  useEffect(() => {
+    if (
+      gameState.phase === "active" &&
+      !assignmentsCreated &&
+      !autoAssignedRef.current &&
+      alivePlayers.length >= 2
+    ) {
+      autoAssignedRef.current = true;
+      handleAssignRoles(true); // silent auto-assign (no alert)
+    }
+  }, [gameState.phase]);
+
+  // Reset auto-assign guard when assignments get created
+  useEffect(() => {
+    if (assignmentsCreated) {
+      autoAssignedRef.current = true;
+    }
+  }, [assignmentsCreated]);
+
+  // Reset auto-assign guard when moving to a new slot
+  useEffect(() => {
+    if (gameState.phase === "lobby" || gameState.phase === "standby") {
+      autoAssignedRef.current = false;
+      setAssignmentsCreated(false);
+    }
+  }, [gameState.phase, slotNumber]);
+
+  const handleAssignRoles = async (silent = false) => {
     setProcessing(true);
     setProcessError(null);
     try {
@@ -48,7 +93,6 @@ export default function GameLemonsAdmin({ gameState, players, onUpdateGameState 
       const sellers = shuffled.slice(0, numSellers);
       const buyers = shuffled.slice(numSellers);
 
-      // Assign gold/lemon to sellers
       const numGold = Math.ceil((goldPct / 100) * sellers.length);
       const sellerShuffled = [...sellers].sort(() => Math.random() - 0.5);
 
@@ -58,7 +102,7 @@ export default function GameLemonsAdmin({ gameState, players, onUpdateGameState 
           playerId: p.id,
           playerName: p.name,
           role: "seller",
-          asset: i < numGold, // true = Gold, false = Lemon
+          asset: i < numGold,
           slotNumber,
           outcome: null,
         });
@@ -75,11 +119,17 @@ export default function GameLemonsAdmin({ gameState, players, onUpdateGameState 
       });
       await batch.commit();
 
+      setAssignmentsCreated(true);
+
+      // Persist goldPct/sellerPct to gameSpecificConfig in Firestore
       if (onUpdateGameState) {
         onUpdateGameState({
           gameSpecificConfig: { ...gsc, goldPct, sellerPct, assignmentsCreated: true },
-          phase: "active",
         } as any);
+      }
+
+      if (!silent && !window.confirm("Roles assigned! The market is now open. Click OK to proceed.")) {
+        // user cancelled optional dialog
       }
     } catch (e: any) {
       setProcessError(e.message);
@@ -91,19 +141,13 @@ export default function GameLemonsAdmin({ gameState, players, onUpdateGameState 
   const handleFinalizeMarket = async () => {
     setProcessing(true);
     try {
-      // For each accepted trade, assign outcome to buyer
       const acceptedTrades = trades.filter(t => t.status === "accepted");
       const batch = writeBatch(db);
-      const tradedBuyerIds = new Set<string>();
-      const tradedSellerIds = new Set<string>();
 
       for (const trade of acceptedTrades) {
         const sellerAssign = assignments.find(a => a.playerId === trade.sellerId);
         const outcome = sellerAssign?.asset ? "GOLD" : "LEMON";
-        // Update buyer's assignment with outcome
         batch.update(doc(db, "lemonAssignments", `${slotNumber}_${trade.buyerId}`), { outcome });
-        tradedBuyerIds.add(trade.buyerId);
-        tradedSellerIds.add(trade.sellerId);
       }
 
       await batch.commit();
@@ -125,9 +169,11 @@ export default function GameLemonsAdmin({ gameState, players, onUpdateGameState 
 
   return (
     <div className="w-full space-y-6 font-mono">
+      {/* Setup panel — visible in lobby (before auto-assign fires) */}
       {isLobby && !assignmentsCreated && (
         <div className="p-4 border border-secondary/40 bg-secondary/5 space-y-6">
           <h3 className="text-sm uppercase tracking-widest text-secondary font-bold">Market of Lemons — Setup</h3>
+          <p className="text-xs text-textMuted">Roles will be randomly assigned when the round starts.</p>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -148,14 +194,15 @@ export default function GameLemonsAdmin({ gameState, players, onUpdateGameState 
             </div>
           </div>
 
-          <button onClick={handleAssignRoles} disabled={isProcessing || alivePlayers.length < 2}
+          <button onClick={() => handleAssignRoles(false)} disabled={isProcessing || alivePlayers.length < 2}
             className="w-full py-4 bg-secondary text-background font-bold uppercase tracking-widest hover:bg-white transition-colors disabled:opacity-40">
-            {isProcessing ? "Assigning..." : `ASSIGN ROLES & START MARKET (${alivePlayers.length} players)`}
+            {isProcessing ? "Assigning..." : `MANUALLY ASSIGN ROLES (${alivePlayers.length} players)`}
           </button>
           {processError && <p className="text-primary text-xs">{processError}</p>}
         </div>
       )}
 
+      {/* Roles assigned / market open panel */}
       {(isActive || assignmentsCreated) && (
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-4 border border-border bg-surface p-4 text-center text-xs">

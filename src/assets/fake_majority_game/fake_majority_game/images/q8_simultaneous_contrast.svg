@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" width="600" height="400">
+  <rect width="600" height="400" fill="#0a0a0f"/>
+  <text x="300" y="36" font-size="15" fill="#6b6b80" text-anchor="middle" font-family="monospace" letter-spacing="2">WHICH INNER SQUARE IS DARKER?</text>
+
+  <rect x="80"  y="70" width="180" height="260" fill="#111"/>
+  <rect x="145" y="155" width="50" height="90" fill="#888"/>
+  <text x="170" y="338" font-size="14" fill="#d4a017" text-anchor="middle" font-family="monospace">A</text>
+
+  <rect x="340" y="70" width="180" height="260" fill="#ccc"/>
+  <rect x="405" y="155" width="50" height="90" fill="#888"/>
+  <text x="430" y="338" font-size="14" fill="#d4a017" text-anchor="middle" font-family="monospace">B</text>
+
+  <text x="300" y="370" font-size="12" fill="#3a3a4a" text-anchor="middle" font-family="monospace">HOUSE OF TRIALS</text>
+</svg>

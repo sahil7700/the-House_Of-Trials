@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" width="600" height="400">
+  <rect width="600" height="400" fill="#0a0a0f"/>
+  <text x="300" y="36" font-size="15" fill="#6b6b80" text-anchor="middle" font-family="monospace" letter-spacing="2">WHAT IS THE ANSWER?</text>
+
+  <text x="300" y="180" font-size="72" fill="#e8e8f0" text-anchor="middle" font-family="monospace" font-weight="bold">2 + 2 × 3</text>
+  <text x="300" y="230" font-size="14" fill="#6b6b80" text-anchor="middle" font-family="monospace">(no calculator)</text>
+
+  <rect x="100" y="270" width="160" height="64" rx="8" fill="#111118" stroke="#2a2a3a" stroke-width="1.5"/>
+  <text x="180" y="310" font-size="36" fill="#d4a017" text-anchor="middle" font-family="monospace" font-weight="bold">A: 12</text>
+
+  <rect x="340" y="270" width="160" height="64" rx="8" fill="#111118" stroke="#2a2a3a" stroke-width="1.5"/>
+  <text x="420" y="310" font-size="36" fill="#d4a017" text-anchor="middle" font-family="monospace" font-weight="bold">B: 8</text>
+
+  <text x="300" y="370" font-size="12" fill="#3a3a4a" text-anchor="middle" font-family="monospace">HOUSE OF TRIALS</text>
+</svg>

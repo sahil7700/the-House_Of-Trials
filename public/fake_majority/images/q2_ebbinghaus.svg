@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" width="600" height="400">
+  <rect width="600" height="400" fill="#0a0a0f"/>
+  <text x="300" y="36" font-size="15" fill="#6b6b80" text-anchor="middle" font-family="monospace" letter-spacing="2">WHICH ORANGE CIRCLE IS BIGGER?</text>
+
+  <text x="80" y="210" font-size="13" fill="#d4a017" font-family="monospace" text-anchor="middle">A</text>
+  <circle cx="155" cy="200" r="9" fill="#9b9b9b"/>
+  <circle cx="155" cy="175" r="9" fill="#9b9b9b"/>
+  <circle cx="155" cy="225" r="9" fill="#9b9b9b"/>
+  <circle cx="132" cy="188" r="9" fill="#9b9b9b"/>
+  <circle cx="132" cy="212" r="9" fill="#9b9b9b"/>
+  <circle cx="178" cy="188" r="9" fill="#9b9b9b"/>
+  <circle cx="178" cy="212" r="9" fill="#9b9b9b"/>
+  <circle cx="155" cy="200" r="28" fill="#c0392b"/>
+
+  <text x="430" y="210" font-size="13" fill="#d4a017" font-family="monospace" text-anchor="middle">B</text>
+  <circle cx="445" cy="200" r="28" fill="#7b7b7b"/>
+  <circle cx="445" cy="155" r="28" fill="#7b7b7b"/>
+  <circle cx="445" cy="245" r="28" fill="#7b7b7b"/>
+  <circle cx="406" cy="178" r="28" fill="#7b7b7b"/>
+  <circle cx="406" cy="222" r="28" fill="#7b7b7b"/>
+  <circle cx="484" cy="178" r="28" fill="#7b7b7b"/>
+  <circle cx="484" cy="222" r="28" fill="#7b7b7b"/>
+  <circle cx="445" cy="200" r="28" fill="#c0392b"/>
+
+  <text x="300" y="370" font-size="12" fill="#3a3a4a" text-anchor="middle" font-family="monospace">HOUSE OF TRIALS</text>
+</svg>

@@ -11,6 +11,7 @@ export default function ProjectorClient() {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [eventConfig, setEventConfig] = useState<EventConfig | null>(null);
   const [playersAlive, setPlayersAlive] = useState(0);
+  const [submissionsCount, setSubmissionsCount] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [isOffline, setIsOffline] = useState(false);
@@ -24,6 +25,7 @@ export default function ProjectorClient() {
     const unsubPlayers = onSnapshot(query(collection(db, "players")), (snap) => {
       const all = snap.docs.map(d => d.data() as PlayerData);
       setPlayersAlive(all.filter(p => p.status === "alive").length);
+      setSubmissionsCount(all.filter(p => p.status === "alive" && p.currentSubmission !== null).length);
     });
 
     return () => {
@@ -251,7 +253,7 @@ export default function ProjectorClient() {
            <div className="w-full space-y-4">
              <div className="flex justify-between items-end">
                 <span className="text-xl text-textMuted font-mono uppercase tracking-widest">
-                   {gameState.submissionsCount} / {playersAlive} Received
+                   {submissionsCount} / {playersAlive} Received
                 </span>
                 <span className="text-xl text-secondary font-mono uppercase tracking-widest animate-pulse">
                    Submit on your device
@@ -261,7 +263,7 @@ export default function ProjectorClient() {
                 <motion.div 
                    className="h-full bg-secondary"
                    initial={{ width: 0 }}
-                   animate={{ width: `${playersAlive > 0 ? (gameState.submissionsCount / playersAlive) * 100 : 0}%` }}
+                   animate={{ width: `${playersAlive > 0 ? (submissionsCount / playersAlive) * 100 : 0}%` }}
                    transition={{ duration: 0.5 }}
                 />
              </div>

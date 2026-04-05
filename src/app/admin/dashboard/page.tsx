@@ -537,6 +537,9 @@ export default function AdminDashboard() {
       if (nextGameId === "C10") {
         gsc = { numberSequence: nextC10Sequence, currentNumberIndex: 0 };
       }
+      if (nextGameId === "LEMONS") {
+        gsc = { goldPct: 40, sellerPct: 50, assignmentsCreated: false };
+      }
 
       // ✅ Always read slots FRESH from Firestore to avoid stale state after End Event
       const freshConfigSnap = await getDocs(query(collection(db, "system")));
@@ -586,7 +589,7 @@ export default function AdminDashboard() {
         timerDuration: nextGameTimer,
         roundType: nextRoundType,
         customOptions: nextGameId === "A4" || nextGameId === "C9" ? nextCustomOptions : [],
-        gameSpecificConfig: (nextGameId === "A1" || nextGameId === "A3" || nextGameId === "B7" || nextGameId === "C10") ? gsc : (nextGameId === "B8" ? {} : null),
+        gameSpecificConfig: (nextGameId === "A1" || nextGameId === "A3" || nextGameId === "B7" || nextGameId === "C10" || nextGameId === "LEMONS") ? gsc : (nextGameId === "B8" ? {} : null),
         gameHistory: newHistory,
         results: null,
         submissionsCount: 0,
@@ -1002,15 +1005,15 @@ export default function AdminDashboard() {
                         </div>
                       )}
 
-                      {/* B6 / B8 / C9 Complex Natively Routed Configs */}
-                      {["B6", "B8", "C9"].includes(activeGameId) && (
+                      {/* B6 / B8 / C9 / LEMONS / SILENCE Complex Natively Routed Configs */}
+                      {["B6", "B8", "C9", "LEMONS", "SILENCE"].includes(activeGameId) && (
                          <div className="w-full">
                             <AdminGameStats gameState={gameState} players={players} onUpdateGameState={updateGameState} activeGameId={activeGameId} />
                          </div>
                       )}
                     </div>
 
-                    {!["B6", "B8", "C9"].includes(activeGameId) && (
+                    {!["B6", "B8", "C9", "LEMONS", "SILENCE"].includes(activeGameId) && (
                       <button 
                          onClick={() => {
                           let gsc: any = {};
@@ -1028,13 +1031,16 @@ export default function AdminDashboard() {
                             if (nextC10Sequence.length !== 20) { alert("C10: Generate a 20-number sequence first."); return; }
                             gsc = { numberSequence: nextC10Sequence, currentNumberIndex: 0 };
                           }
+                          if (activeGameId === "LEMONS") {
+                            gsc = { goldPct: 40, sellerPct: 50, assignmentsCreated: false };
+                          }
 
                           updateGameState({ 
                             phase: "active",
                             playersAlive: totalAlive,
                             submissionsCount: 0,
-                            customOptions: activeGameId === "A4" ? nextCustomOptions : [],
-                            gameSpecificConfig: (activeGameId === "A1" || activeGameId === "A3" || activeGameId === "B7" || activeGameId === "C10") ? gsc : null,
+                            customOptions: activeGameId === "A4" || activeGameId === "C9" ? nextCustomOptions : [],
+                            gameSpecificConfig: (activeGameId === "A1" || activeGameId === "A3" || activeGameId === "B7" || activeGameId === "C10" || activeGameId === "LEMONS") ? gsc : (activeGameId === "B8" ? {} : null),
                           });
                           startTimer(gameState.timerDuration || 60);
                        }}

@@ -31,35 +31,21 @@ export default function GameB8({ onSubmit, isLocked, currentSubmission, results,
   const myTurnHasPassed = myQueueIndex !== -1 && myQueueIndex < currentTurnIndex;
   const inQueue = myQueueIndex !== -1;
 
-  // Server-side turn advancement
+  // Standard submission — the Admin Dashboard will detect this and advance the cascade
   const advanceTurn = useCallback(async (choice: "RED" | "BLUE") => {
     if (advancing) return;
     setAdvancing(true);
     setServerError(null);
 
     try {
-      const res = await fetch("/api/game/b8-advance-turn", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          playerId,
-          slotNumber: gameState.currentSlot,
-          gameId: "B8",
-          choice,
-        }),
-      });
+      if (!isMyTurn) throw new Error("Not your turn");
+      
+      // Submit securely to this player's document
+      await onSubmit(choice);
+      
+      // Client-side visual delay while the Admin Dashboard updates the queue
+      setTimeout(() => setAdvancing(false), 2000);
 
-      const data = await res.json();
-      if (!res.ok) {
-        if (data.error === "Not your turn" || data.error === "Cascade already finished") {
-          // Not an error — just stale state, let the UI update naturally
-          return;
-        }
-        throw new Error(data.error || "Failed to advance turn");
-      }
-
-      // onSubmit notifies the parent component
-      onSubmit(choice);
     } catch (e: any) {
       setServerError(e.message);
       console.error("B8 advance turn error:", e);

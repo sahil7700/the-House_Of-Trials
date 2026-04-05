@@ -89,10 +89,7 @@ export default function GameUI() {
         clearInterval(interval);
         if (autoLockFiredRound.current !== gameState.currentSlot) {
            autoLockFiredRound.current = gameState.currentSlot;
-           fetch('/api/game/auto-lock', {
-              method: 'POST',
-              body: JSON.stringify({ slotNumber: gameState.currentSlot, gameId: gameState.currentGameId })
-           }).catch(e => console.error("Auto lock failed:", e));
+           console.log("Time is up. Waiting for Admin Dashboard to auto-lock the phase...");
         }
       }
     }, 500);

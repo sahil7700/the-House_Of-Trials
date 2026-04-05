@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" width="600" height="400">
+  <rect width="600" height="400" fill="#0a0a0f"/>
+  <text x="300" y="36" font-size="15" fill="#6b6b80" text-anchor="middle" font-family="monospace" letter-spacing="2">HOW MANY LETTER F's ARE THERE?</text>
+
+  <rect x="60" y="60" width="480" height="250" rx="8" fill="#111118" stroke="#2a2a3a" stroke-width="1"/>
+  <text x="300" y="115" font-size="19" fill="#e8e8f0" text-anchor="middle" font-family="monospace" letter-spacing="1">FINISHED FILES ARE THE RE-</text>
+  <text x="300" y="155" font-size="19" fill="#e8e8f0" text-anchor="middle" font-family="monospace" letter-spacing="1">SULT OF YEARS OF SCIENTI-</text>
+  <text x="300" y="195" font-size="19" fill="#e8e8f0" text-anchor="middle" font-family="monospace" letter-spacing="1">FIC STUDY COMBINED WITH</text>
+  <text x="300" y="235" font-size="19" fill="#e8e8f0" text-anchor="middle" font-family="monospace" letter-spacing="1">THE EXPERIENCE OF YEARS.</text>
+  <text x="300" y="275" font-size="14" fill="#6b6b80" text-anchor="middle" font-family="monospace">(read once only — no re-counting)</text>
+
+  <text x="140" y="355" font-size="22" fill="#d4a017" text-anchor="middle" font-family="monospace" font-weight="bold">A: 3</text>
+  <text x="300" y="355" font-size="22" fill="#d4a017" text-anchor="middle" font-family="monospace" font-weight="bold">B: 6</text>
+  <text x="460" y="355" font-size="22" fill="#d4a017" text-anchor="middle" font-family="monospace" font-weight="bold">C: 4</text>
+
+  <text x="300" y="388" font-size="12" fill="#3a3a4a" text-anchor="middle" font-family="monospace">HOUSE OF TRIALS</text>
+</svg>

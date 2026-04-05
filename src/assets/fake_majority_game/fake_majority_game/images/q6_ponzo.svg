@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" width="600" height="400">
+  <rect width="600" height="400" fill="#0a0a0f"/>
+  <text x="300" y="36" font-size="15" fill="#6b6b80" text-anchor="middle" font-family="monospace" letter-spacing="2">WHICH YELLOW BAR IS LONGER?</text>
+
+  <line x1="180" y1="60"  x2="300" y2="350" stroke="#4a4a5a" stroke-width="2"/>
+  <line x1="420" y1="60"  x2="300" y2="350" stroke="#4a4a5a" stroke-width="2"/>
+
+  <line x1="205" y1="120" x2="395" y2="120" stroke="#d4a017" stroke-width="5" stroke-linecap="round"/>
+  <text x="165" y="127" font-size="14" fill="#d4a017" font-family="monospace" font-weight="bold">A</text>
+
+  <line x1="243" y1="260" x2="357" y2="260" stroke="#d4a017" stroke-width="5" stroke-linecap="round"/>
+  <text x="225" y="267" font-size="14" fill="#d4a017" font-family="monospace" font-weight="bold">B</text>
+
+  <text x="300" y="370" font-size="12" fill="#3a3a4a" text-anchor="middle" font-family="monospace">HOUSE OF TRIALS</text>
+</svg>

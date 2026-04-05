@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 420" width="600" height="420">
+  <rect width="600" height="420" fill="#0a0a0f"/>
+  <text x="300" y="36" font-size="15" fill="#6b6b80" text-anchor="middle" font-family="monospace" letter-spacing="2">FIND THE LOGICAL ERROR</text>
+
+  <rect x="40" y="55" width="520" height="290" rx="8" fill="#111118" stroke="#2a2a3a" stroke-width="1"/>
+
+  <text x="300" y="90"  font-size="14" fill="#e8e8f0" text-anchor="middle" font-family="monospace">3 friends pay ₹30 for a hotel room.</text>
+  <text x="300" y="115" font-size="14" fill="#e8e8f0" text-anchor="middle" font-family="monospace">Manager says room is only ₹25.</text>
+  <text x="300" y="140" font-size="14" fill="#e8e8f0" text-anchor="middle" font-family="monospace">Bellboy returns ₹5. Keeps ₹2 as tip.</text>
+  <text x="300" y="165" font-size="14" fill="#e8e8f0" text-anchor="middle" font-family="monospace">Each friend gets ₹1 back.</text>
+
+  <line x1="80" y1="185" x2="520" y2="185" stroke="#2a2a3a" stroke-width="1"/>
+
+  <text x="300" y="215" font-size="14" fill="#6b6b80" text-anchor="middle" font-family="monospace">Each paid ₹9 (₹10 − ₹1 back)</text>
+  <text x="300" y="240" font-size="14" fill="#6b6b80" text-anchor="middle" font-family="monospace">3 × ₹9 = ₹27</text>
+  <text x="300" y="265" font-size="14" fill="#6b6b80" text-anchor="middle" font-family="monospace">Bellboy has ₹2</text>
+  <text x="300" y="290" font-size="14" fill="#6b6b80" text-anchor="middle" font-family="monospace">₹27 + ₹2 = ₹29 ← WHERE IS ₹1?</text>
+  <text x="300" y="320" font-size="13" fill="#c0392b" text-anchor="middle" font-family="monospace">Is ₹1 really missing?</text>
+
+  <text x="140" y="380" font-size="16" fill="#d4a017" text-anchor="middle" font-family="monospace">A: YES</text>
+  <text x="460" y="380" font-size="16" fill="#d4a017" text-anchor="middle" font-family="monospace">B: NO</text>
+
+  <text x="300" y="408" font-size="12" fill="#3a3a4a" text-anchor="middle" font-family="monospace">HOUSE OF TRIALS</text>
+</svg>

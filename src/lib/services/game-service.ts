@@ -204,11 +204,6 @@ export const submitGameInput = async (
     eliminated: null,
   });
 
-  // Increment submission counter
-  batch.update(gameStateRef, {
-    submissionsCount: increment(1),
-  });
-
   await batch.commit();
   
   return { success: true };

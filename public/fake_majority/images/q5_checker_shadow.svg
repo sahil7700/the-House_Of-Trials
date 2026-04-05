@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" width="600" height="400">
+  <rect width="600" height="400" fill="#0a0a0f"/>
+  <text x="300" y="36" font-size="15" fill="#6b6b80" text-anchor="middle" font-family="monospace" letter-spacing="2">ARE SQUARES A AND B THE SAME COLOUR?</text>
+
+  <g transform="translate(150, 55)">
+    <rect x="0"   y="0"   width="40" height="40" fill="#888"/>
+    <rect x="40"  y="0"   width="40" height="40" fill="#444"/>
+    <rect x="80"  y="0"   width="40" height="40" fill="#888"/>
+    <rect x="120" y="0"   width="40" height="40" fill="#444"/>
+    <rect x="160" y="0"   width="40" height="40" fill="#888"/>
+    <rect x="200" y="0"   width="40" height="40" fill="#444"/>
+    <rect x="240" y="0"   width="40" height="40" fill="#888"/>
+    <rect x="0"   y="40"  width="40" height="40" fill="#444"/>
+    <rect x="40"  y="40"  width="40" height="40" fill="#888"/>
+    <rect x="80"  y="40"  width="40" height="40" fill="#444"/>
+    <rect x="120" y="40"  width="40" height="40" fill="#888"/>
+    <rect x="160" y="40"  width="40" height="40" fill="#444"/>
+    <rect x="200" y="40"  width="40" height="40" fill="#888"/>
+    <rect x="240" y="40"  width="40" height="40" fill="#444"/>
+    <rect x="0"   y="80"  width="40" height="40" fill="#888"/>
+    <rect x="40"  y="80"  width="40" height="40" fill="#444"/>
+    <rect x="80"  y="80"  width="40" height="40" fill="#888"/>
+    <rect x="120" y="80"  width="40" height="40" fill="#444"/>
+    <rect x="160" y="80"  width="40" height="40" fill="#888"/>
+    <rect x="200" y="80"  width="40" height="40" fill="#444"/>
+    <rect x="240" y="80"  width="40" height="40" fill="#888"/>
+    <rect x="0"   y="120" width="40" height="40" fill="#444"/>
+    <rect x="40"  y="120" width="40" height="40" fill="#888"/>
+    <rect x="80"  y="120" width="40" height="40" fill="#444"/>
+    <rect x="120" y="120" width="40" height="40" fill="#888"/>
+    <rect x="160" y="120" width="40" height="40" fill="#444"/>
+    <rect x="200" y="120" width="40" height="40" fill="#888"/>
+    <rect x="240" y="120" width="40" height="40" fill="#444"/>
+    <rect x="0"   y="160" width="40" height="40" fill="#888"/>
+    <rect x="40"  y="160" width="40" height="40" fill="#444"/>
+    <rect x="80"  y="160" width="40" height="40" fill="#888"/>
+    <rect x="120" y="160" width="40" height="40" fill="#444"/>
+    <rect x="160" y="160" width="40" height="40" fill="#888"/>
+    <rect x="200" y="160" width="40" height="40" fill="#444"/>
+    <rect x="240" y="160" width="40" height="40" fill="#888"/>
+    <rect x="0"   y="200" width="40" height="40" fill="#444"/>
+    <rect x="40"  y="200" width="40" height="40" fill="#888"/>
+    <rect x="80"  y="200" width="40" height="40" fill="#444"/>
+    <rect x="120" y="200" width="40" height="40" fill="#888"/>
+    <rect x="160" y="200" width="40" height="40" fill="#444"/>
+    <rect x="200" y="200" width="40" height="40" fill="#888"/>
+    <rect x="240" y="200" width="40" height="40" fill="#444"/>
+    <polygon points="160,0 280,0 280,240" fill="rgba(0,0,0,0.45)"/>
+    <rect x="80"  y="120" width="40" height="40" fill="#888" opacity="1"/>
+    <rect x="160" y="40"  width="40" height="40" fill="#888" opacity="1"/>
+    <text x="95" y="147" font-size="13" fill="#c0392b" font-family="monospace" font-weight="bold" text-anchor="middle">B</text>
+    <text x="99" y="67"  font-size="13" fill="#c0392b" font-family="monospace" font-weight="bold" text-anchor="middle">A</text>
+  </g>
+
+  <text x="300" y="355" font-size="17" fill="#d4a017" text-anchor="middle" font-family="monospace">A: YES, same   B: NO, different</text>
+  <text x="300" y="385" font-size="12" fill="#3a3a4a" text-anchor="middle" font-family="monospace">HOUSE OF TRIALS</text>
+</svg>

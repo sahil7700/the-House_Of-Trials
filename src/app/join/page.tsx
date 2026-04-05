@@ -16,37 +16,64 @@ export default function JoinPage() {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [checkingState, setCheckingState] = useState(true);
 
+  const [authStateReady, setAuthStateReady] = useState(false);
+
   useEffect(() => {
-    // 1. First check if user is already authenticated and registered
-    import("@/lib/firebase").then(({ auth }) => {
+    let active = true;
+    import("@/lib/firebase").then(({ auth, signInAnonymously }) => {
       import("@/lib/services/player-service").then(({ getPlayer }) => {
         const checkAuth = async () => {
-          // Wait for auth to initialize (max 2 attempts)
           let attempts = 0;
-          while (attempts < 5) {
-            if (auth.currentUser) {
-              const p = await getPlayer(auth.currentUser.uid);
+          let currentUser = auth.currentUser;
+          while (!currentUser && attempts < 5) {
+            await new Promise(r => setTimeout(r, 200));
+            currentUser = auth.currentUser;
+            attempts++;
+          }
+          
+          if (!currentUser && active) {
+            try {
+              const cred = await signInAnonymously(auth);
+              currentUser = cred.user;
+            } catch (e) {
+              console.error("Auth error:", e);
+            }
+          }
+
+          if (currentUser && active) {
+            try {
+              const p = await getPlayer(currentUser.uid);
               if (p) {
                 if (p.status === "eliminated") router.push("/eliminated");
                 else router.push("/lobby");
                 return;
               }
-              break; // Auth exists but no player record, stay on join
+            } catch (e) {
+              console.error("Player fetch error:", e);
             }
-            await new Promise(r => setTimeout(r, 200));
-            attempts++;
+          }
+          
+          if (active) {
+            setAuthStateReady(true);
           }
         };
         checkAuth();
       });
     });
 
+    return () => { active = false; };
+  }, [router]);
+
+  useEffect(() => {
+    if (!authStateReady) return;
+
     const unsub = subscribeToGameState((state) => {
       setGameState(state);
       setCheckingState(false);
     });
+    
     return () => unsub();
-  }, [router]);
+  }, [authStateReady]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

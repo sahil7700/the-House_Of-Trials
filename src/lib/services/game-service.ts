@@ -46,6 +46,7 @@ export interface GameState {
   phase: GamePhase;
   timerDuration: number;
   timerStartedAt: any | null;
+  phaseEndsAt: any | null;
   timerPaused: boolean;
   playersAlive: number;
   totalRegistered: number;

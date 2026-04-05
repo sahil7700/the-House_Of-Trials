@@ -27,59 +27,79 @@ export default function GameC9Admin({ gameState, players, onUpdateGameState }: P
   const [showOpponentName, setShowOpponentName] = useState(gsc.showOpponentName ?? true);
   const [pairsCreated, setPairsCreated] = useState(gsc.pairsCreated || false);
 
+  const [isPairing, setPairing] = useState(false);
+  const [pairError, setPairError] = useState<string | null>(null);
+
   const handlePairPlayers = async () => {
     if (!onUpdateGameState) return;
-
-    // Randomize players
-    const shuffled = [...alivePlayers].sort(() => 0.5 - Math.random());
-    const newPairs: any[] = [];
-    
-    for (let i = 0; i < shuffled.length; i += 2) {
-      if (i + 1 < shuffled.length) {
-        newPairs.push({
-          pairId: `pair_${i}`,
-          playerAId: shuffled[i].id,
-          playerBId: shuffled[i].id,
-          playerA_sequence: null,
-          playerB_sequence: null,
-          playerA_guess: null,
-          playerB_guess: null,
-          playerA_score: null,
-          playerB_score: null,
-          winnerId: null,
-          loserId: null,
-          tied: false,
-        });
-      }
-    }
+    setPairing(true);
+    setPairError(null);
 
     try {
-       // Persist pairs into Firestore standard pairs/slot collection
-       const batch = writeBatch(db);
-       const pairsDocRef = doc(db, "pairs", String(gameState.currentSlot));
-       batch.set(pairsDocRef, { pairs: newPairs });
-       
-       // Clear player submissions
-       alivePlayers.forEach(p => {
-          batch.update(doc(db, "players", p.id), { currentSubmission: null });
-       });
+      const shuffled = [...alivePlayers].sort(() => 0.5 - Math.random());
+      const newPairs: any[] = [];
+      
+      for (let i = 0; i < shuffled.length; i += 2) {
+        if (i + 1 < shuffled.length) {
+          newPairs.push({
+            pairId: `pair_${i}`,
+            playerAId: shuffled[i].id,
+            playerBId: shuffled[i + 1].id,
+            playerA_sequence: null,
+            playerB_sequence: null,
+            playerA_guess: null,
+            playerB_guess: null,
+            playerA_score: null,
+            playerB_score: null,
+            winnerId: null,
+            loserId: null,
+            tied: false,
+          });
+        } else {
+           // Handle odd number player (BYE calculation)
+           newPairs.push({
+            pairId: `pair_${i}_bye`,
+            playerAId: shuffled[i].id,
+            playerBId: "BYE",
+            playerA_sequence: null,
+            playerB_sequence: null,
+            playerA_guess: null,
+            playerB_guess: null,
+            playerA_score: null,
+            playerB_score: null,
+            winnerId: shuffled[i].id, // Auto-advances
+            loserId: "BYE",
+            tied: false,
+          });
+        }
+      }
 
-       await batch.commit();
+      // We use set docs using merge true to bypass strict existence checks
+      const batch = writeBatch(db);
+      const pairsDocRef = doc(db, "pairs", String(gameState.currentSlot));
+      batch.set(pairsDocRef, { pairs: newPairs }, { merge: true });
 
-       onUpdateGameState({
-         gameSpecificConfig: {
-           ...gsc,
-           tieBreaker,
-           exactMatchBonus,
-           showOpponentName,
-           pairsCreated: true
-         },
-         results: { pairs: newPairs }
-       });
-       alert("Pairs created successfully!");
-    } catch (e) {
-       console.error(e);
-       alert("Error creating pairs");
+      alivePlayers.forEach(p => {
+         batch.update(doc(db, "players", p.id), { currentSubmission: null });
+      });
+
+      await batch.commit();
+
+      onUpdateGameState({
+        gameSpecificConfig: {
+          ...gsc,
+          tieBreaker,
+          exactMatchBonus,
+          showOpponentName,
+          pairsCreated: true
+        },
+        results: { pairs: newPairs }
+      });
+    } catch (e: any) {
+      console.error("Pairing Error:", e);
+      setPairError(e.message || "Unknown error creating pairs via Firestore.");
+    } finally {
+      setPairing(false);
     }
   };
 
@@ -159,9 +179,16 @@ export default function GameC9Admin({ gameState, players, onUpdateGameState }: P
           </div>
 
           {!pairsCreated ? (
-             <button onClick={handlePairPlayers} className="w-full bg-secondary/20 text-secondary border border-secondary py-3 hover:bg-secondary hover:text-black uppercase tracking-widest mt-4">
-                Randomize & Pair Players
-             </button>
+             <div className="space-y-2 mt-4">
+                <button disabled={isPairing} onClick={handlePairPlayers} className="w-full bg-secondary/20 text-secondary border border-secondary py-3 hover:bg-secondary hover:text-black uppercase tracking-widest disabled:opacity-50">
+                   {isPairing ? "Pairing..." : "Randomize & Pair Players"}
+                </button>
+                {pairError && (
+                   <div className="bg-red-900/50 border border-red-500 text-red-400 p-3 text-xs uppercase">
+                      Error: {pairError}
+                   </div>
+                )}
+             </div>
           ) : (
              <div className="bg-green-900/20 text-green-500 border border-green-700/50 p-4 text-center">
                 <p className="text-xs uppercase tracking-widest mb-4">Players Paired Successfully</p>

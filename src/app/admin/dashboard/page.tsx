@@ -28,6 +28,10 @@ export default function AdminDashboard() {
   const [nextGameTimer, setNextGameTimer] = useState(60);
   const [nextRoundType, setNextRoundType] = useState<"standard" | "semi-final" | "final">("standard");
   const [nextCustomOptions, setNextCustomOptions] = useState<string[]>(["Option A", "Option B", "Option C", "Option D"]);
+  // A1 / A3 config
+  const [nextA1Multiplier, setNextA1Multiplier] = useState(0.666);
+  const [nextA3Penalty, setNextA3Penalty] = useState(5);
+  const [nextA3Bonus, setNextA3Bonus] = useState(5);
   // B7 config
   const [nextB7Threshold, setNextB7Threshold] = useState(60);
   const [nextB7FixedTime, setNextB7FixedTime] = useState(25);
@@ -295,6 +299,12 @@ export default function AdminDashboard() {
 
       // Build game-specific config
       let gsc: any = {};
+      if (nextGameId === "A1") {
+        gsc = { multiplier: nextA1Multiplier };
+      }
+      if (nextGameId === "A3") {
+        gsc = { penalty: nextA3Penalty, bonus: nextA3Bonus };
+      }
       if (nextGameId === "B7") {
         if (!nextB7Threshold || nextB7Threshold < 1) { alert("B7: Please set a valid threshold."); setCalculating(false); return; }
         gsc = { threshold: nextB7Threshold, fixedRouteTime: nextB7FixedTime, revealStep: 0 };
@@ -311,7 +321,7 @@ export default function AdminDashboard() {
         timerDuration: nextGameTimer,
         roundType: nextRoundType,
         customOptions: nextGameId === "A4" || nextGameId === "C9" ? nextCustomOptions : [],
-        gameSpecificConfig: nextGameId === "B7" || nextGameId === "C10" ? gsc : null,
+        gameSpecificConfig: (nextGameId === "A1" || nextGameId === "A3" || nextGameId === "B7" || nextGameId === "C10") ? gsc : null,
         gameHistory: newHistory,
         results: null,
         submissionsCount: 0
@@ -436,20 +446,160 @@ export default function AdminDashboard() {
 
               <section className="bg-surface border border-border p-6 min-h-[200px]">
                 {gameState.phase === "lobby" && (
-                  <div className="flex flex-col items-center justify-center space-y-6 h-full p-4">
+                  <div className="flex flex-col items-center justify-center space-y-6 w-full p-4">
                     <p className="text-sm text-textMuted text-center uppercase tracking-widest">
                        Lobby: {gameState.currentRoundTitle}
                     </p>
+                    
+                    <div className="w-full max-w-2xl space-y-4">
+                      {/* A1 Config */}
+                      {activeGameId === "A1" && (
+                        <div className="w-full space-y-3 p-4 border border-secondary/50 bg-secondary/5 shadow-glow-gold">
+                          <label className="text-[10px] text-secondary uppercase tracking-widest block font-bold">A1 — Average Multiplier</label>
+                          <div className="space-y-1">
+                            <label className="text-[10px] text-textMuted uppercase tracking-widest">Multiplier (Target = Average * Multiplier)</label>
+                            <input type="number" step="0.01" value={nextA1Multiplier} onChange={e => setNextA1Multiplier(parseFloat(e.target.value)||0)}
+                              className="w-full bg-background border border-border px-3 py-2 text-textDefault focus:border-secondary outline-none text-sm" />
+                            <p className="text-[9px] text-textMuted">Default is 0.666 (2/3)</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* A2 Config */}
+                      {activeGameId === "A2" && (
+                        <div className="w-full space-y-3 p-4 border border-secondary/50 bg-secondary/5 shadow-glow-gold text-center">
+                          <p className="text-[10px] text-secondary uppercase tracking-widest block font-bold mb-2">A2 — Range Minority</p>
+                          <p className="text-xs text-textMuted uppercase">No game-specific variables required to configure.</p>
+                        </div>
+                      )}
+
+                      {/* A3 Config */}
+                      {activeGameId === "A3" && (
+                        <div className="w-full space-y-4 p-4 border border-secondary/50 bg-secondary/5 shadow-glow-gold">
+                          <label className="text-[10px] text-secondary uppercase tracking-widest block font-bold">A3 — Pair Match Variables</label>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                              <label className="text-[10px] text-textMuted uppercase tracking-widest">Winner Bonus (+Pts)</label>
+                              <input type="number" value={nextA3Bonus} onChange={e => setNextA3Bonus(parseInt(e.target.value)||0)}
+                                className="w-full bg-background border border-border px-3 py-2 text-textDefault focus:border-secondary outline-none text-sm" />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] text-textMuted uppercase tracking-widest">Loser Penalty (-Pts)</label>
+                              <input type="number" value={nextA3Penalty} onChange={e => setNextA3Penalty(parseInt(e.target.value)||0)}
+                                className="w-full bg-background border border-border px-3 py-2 text-textDefault focus:border-secondary outline-none text-sm" />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* A4 / C9 Custom Options Config */}
+                      {(activeGameId === "A4" || activeGameId === "C9") && (
+                        <div className="w-full space-y-3 p-4 border border-secondary/50 bg-secondary/5 shadow-glow-gold">
+                          <label className="text-[10px] text-secondary uppercase tracking-widest block font-bold">Custom Option Labels</label>
+                          {[0, 1, 2, 3].map(i => (
+                             <input 
+                                key={i}
+                                type="text"
+                                placeholder={`Option ${String.fromCharCode(65 + i)}`}
+                                value={nextCustomOptions[i]}
+                                onChange={(e) => {
+                                  const nextOpts = [...nextCustomOptions];
+                                  nextOpts[i] = e.target.value;
+                                  setNextCustomOptions(nextOpts);
+                                }}
+                                className="w-full bg-background border border-border px-3 py-2 text-textDefault focus:border-secondary outline-none text-xs"
+                             />
+                          ))}
+                        </div>
+                      )}
+
+                      {/* B7 Config */}
+                      {activeGameId === "B7" && (
+                        <div className="w-full space-y-4 p-4 border border-primary/50 bg-primary/5">
+                          <label className="text-[10px] text-primary uppercase tracking-widest block font-bold">B7 — Route 2 Threshold</label>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                              <label className="text-[10px] text-textMuted uppercase tracking-widest">Threshold (Route 2 slower when ≥)</label>
+                              <input type="number" value={nextB7Threshold} onChange={e => setNextB7Threshold(parseInt(e.target.value)||1)}
+                                className="w-full bg-background border border-border px-3 py-2 text-textDefault focus:border-primary outline-none text-sm" />
+                              <p className="text-[9px] text-textMuted">≈ 40–60% of expected player count</p>
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] text-textMuted uppercase tracking-widest">Route 1 Fixed Time (min, display)</label>
+                              <input type="number" value={nextB7FixedTime} onChange={e => setNextB7FixedTime(parseInt(e.target.value)||25)}
+                                className="w-full bg-background border border-border px-3 py-2 text-textDefault focus:border-primary outline-none text-sm" />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* C10 Config */}
+                      {activeGameId === "C10" && (
+                        <div className="w-full space-y-4 p-4 border border-secondary/50 bg-secondary/5 shadow-glow-gold">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[10px] text-secondary uppercase tracking-widest block font-bold">C10 — 20-Number Sequence</label>
+                            <button onClick={generateC10Sequence} className="text-[10px] border border-secondary px-3 py-1 text-secondary hover:bg-secondary hover:text-background transition-colors uppercase tracking-widest">
+                              Generate Curve
+                            </button>
+                          </div>
+                          {nextC10Sequence.length === 20 ? (
+                            <div>
+                              <p className="text-[9px] text-textMuted mb-2 uppercase tracking-widest">Drag a number onto another to swap positions</p>
+                              <div className="grid grid-cols-10 gap-1">
+                                {nextC10Sequence.map((n, i) => (
+                                  <div
+                                    key={i}
+                                    draggable
+                                    onDragStart={() => setC10DragSrc(i)}
+                                    onDragOver={e => e.preventDefault()}
+                                    onDrop={() => { if (c10DragSrc !== null && c10DragSrc !== i) swapC10Cards(c10DragSrc, i); setC10DragSrc(null); }}
+                                    className={`flex flex-col items-center justify-center aspect-square border cursor-grab active:cursor-grabbing transition-all
+                                      ${i >= 7 && i <= 11 ? 'border-secondary/70 bg-secondary/10' : 'border-border bg-background'}
+                                      ${n >= 90 ? 'text-secondary font-bold' : 'text-textMuted'}
+                                      ${c10DragSrc === i ? 'opacity-40 scale-95' : 'hover:border-textDefault'}`}
+                                  >
+                                    <span className="text-[10px] font-mono leading-none">{n}</span>
+                                    <span className="text-[7px] text-textMuted/50">{i+1}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              <p className="text-[10px] text-secondary mt-3">Optimal Window (Gold): Positions 8–12. Peak should be inside.</p>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-textMuted">No sequence generated yet. Click Generate Curve.</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
                     <button 
                        onClick={() => {
+                          let gsc: any = {};
+                          if (activeGameId === "A1") {
+                            gsc = { multiplier: nextA1Multiplier };
+                          }
+                          if (activeGameId === "A3") {
+                            gsc = { penalty: nextA3Penalty, bonus: nextA3Bonus };
+                          }
+                          if (activeGameId === "B7") {
+                            if (!nextB7Threshold || nextB7Threshold < 1) { alert("B7: Please set a valid threshold."); return; }
+                            gsc = { threshold: nextB7Threshold, fixedRouteTime: nextB7FixedTime, revealStep: 0 };
+                          }
+                          if (activeGameId === "C10") {
+                            if (nextC10Sequence.length !== 20) { alert("C10: Generate a 20-number sequence first."); return; }
+                            gsc = { numberSequence: nextC10Sequence, currentNumberIndex: 0 };
+                          }
+
                           updateGameState({ 
                             phase: "active",
                             playersAlive: totalAlive,
-                            submissionsCount: 0
+                            submissionsCount: 0,
+                            customOptions: (activeGameId === "A4" || activeGameId === "C9") ? nextCustomOptions : [],
+                            gameSpecificConfig: (activeGameId === "A1" || activeGameId === "A3" || activeGameId === "B7" || activeGameId === "C10") ? gsc : null,
                           });
                           startTimer(gameState.timerDuration || 60);
                        }}
-                       className="bg-primary/20 border border-primary text-primary hover:bg-primary hover:text-white px-8 py-3 tracking-widest uppercase transition-colors shadow-glow-red"
+                       className="bg-primary/20 border border-primary text-primary hover:bg-primary hover:text-white px-8 py-3 tracking-widest uppercase transition-colors shadow-glow-red mt-8"
                     >
                       START ROUND TIMER
                     </button>
@@ -679,6 +829,46 @@ export default function AdminDashboard() {
                             className="w-full bg-surface border border-border p-3 text-textDefault focus:border-secondary outline-none transition-colors"
                           />
                         </div>
+
+                        {/* A1 Config */}
+                        {nextGameId === "A1" && (
+                          <div className="col-span-2 space-y-3 p-4 border border-secondary/50 bg-secondary/5 shadow-glow-gold">
+                            <label className="text-[10px] text-secondary uppercase tracking-widest block font-bold">A1 — Average Multiplier</label>
+                            <div className="space-y-1">
+                              <label className="text-[10px] text-textMuted uppercase tracking-widest">Multiplier (Target = Average * Multiplier)</label>
+                              <input type="number" step="0.01" value={nextA1Multiplier} onChange={e => setNextA1Multiplier(parseFloat(e.target.value)||0)}
+                                className="w-full bg-background border border-border px-3 py-2 text-textDefault focus:border-secondary outline-none text-sm" />
+                              <p className="text-[9px] text-textMuted">Default is 0.666 (2/3)</p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* A2 Config */}
+                        {nextGameId === "A2" && (
+                          <div className="col-span-2 space-y-3 p-4 border border-secondary/50 bg-secondary/5 shadow-glow-gold text-center">
+                            <p className="text-[10px] text-secondary uppercase tracking-widest block font-bold mb-2">A2 — Range Minority</p>
+                            <p className="text-xs text-textMuted uppercase">No game-specific variables required to configure.</p>
+                          </div>
+                        )}
+
+                        {/* A3 Config */}
+                        {nextGameId === "A3" && (
+                          <div className="col-span-2 space-y-4 p-4 border border-secondary/50 bg-secondary/5 shadow-glow-gold">
+                            <label className="text-[10px] text-secondary uppercase tracking-widest block font-bold">A3 — Pair Match Variables</label>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-1">
+                                <label className="text-[10px] text-textMuted uppercase tracking-widest">Winner Bonus (+Pts)</label>
+                                <input type="number" value={nextA3Bonus} onChange={e => setNextA3Bonus(parseInt(e.target.value)||0)}
+                                  className="w-full bg-background border border-border px-3 py-2 text-textDefault focus:border-secondary outline-none text-sm" />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[10px] text-textMuted uppercase tracking-widest">Loser Penalty (-Pts)</label>
+                                <input type="number" value={nextA3Penalty} onChange={e => setNextA3Penalty(parseInt(e.target.value)||0)}
+                                  className="w-full bg-background border border-border px-3 py-2 text-textDefault focus:border-secondary outline-none text-sm" />
+                              </div>
+                            </div>
+                          </div>
+                        )}
 
                         {(nextGameId === "A4" || nextGameId === "C9") && (
                           <div className="col-span-2 space-y-3 p-4 border border-secondary/50 bg-secondary/5 shadow-glow-gold">

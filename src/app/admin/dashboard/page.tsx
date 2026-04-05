@@ -27,6 +27,37 @@ export default function AdminDashboard() {
   const [nextGameTitle, setNextGameTitle] = useState("");
   const [nextGameTimer, setNextGameTimer] = useState(60);
   const [nextRoundType, setNextRoundType] = useState<"standard" | "semi-final" | "final">("standard");
+  const [nextCustomOptions, setNextCustomOptions] = useState<string[]>(["Option A", "Option B", "Option C", "Option D"]);
+  // B7 config
+  const [nextB7Threshold, setNextB7Threshold] = useState(60);
+  const [nextB7FixedTime, setNextB7FixedTime] = useState(25);
+  // C10 config
+  const [nextC10Sequence, setNextC10Sequence] = useState<number[]>([]);
+  const [c10DragSrc, setC10DragSrc] = useState<number | null>(null);
+
+  const generateC10Sequence = () => {
+    // Build a realistic peak-finder sequence: low start, peak near position 10, taper off
+    const arr: number[] = [];
+    for (let i = 0; i < 20; i++) {
+      let val: number;
+      if (i < 7)       val = Math.floor(Math.random() * 30) + 30; // 30-59 warmup
+      else if (i < 12) val = Math.floor(Math.random() * 25) + 70; // 70-94 peak window
+      else if (i < 17) val = Math.floor(Math.random() * 30) + 25; // 25-54 taper
+      else             val = Math.floor(Math.random() * 20) + 35; // 35-54 final
+      arr.push(val);
+    }
+    // Ensure only ONE clear global peak in positions 8-12
+    const peakPos = 7 + Math.floor(Math.random() * 5);
+    arr[peakPos] = Math.floor(Math.random() * 10) + 90; // 90-99 spike
+    setNextC10Sequence(arr);
+  };
+
+  const swapC10Cards = (fromIdx: number, toIdx: number) => {
+    const arr = [...nextC10Sequence];
+    [arr[fromIdx], arr[toIdx]] = [arr[toIdx], arr[fromIdx]];
+    setNextC10Sequence(arr);
+  };
+
 
   const getGamePlayCount = (id: string) => {
     return gameState?.gameHistory?.[id] || 0;
@@ -145,8 +176,11 @@ export default function AdminDashboard() {
       const calcConfig = currentSlotConfig || {
         gameId: gameState.currentGameId,
         config: {
-          eliminationValue: 1, // default 1 person for A1/A3
-          gameSpecificConfig: {}
+          eliminationValue: 1,
+          gameSpecificConfig: {
+             customOptions: gameState.customOptions,
+             ...((gameState as any).gameSpecificConfig || {})
+          }
         }
       };
 
@@ -257,12 +291,25 @@ export default function AdminDashboard() {
       const newHistory = { ...(gameState?.gameHistory || {}) };
       newHistory[nextGameId] = (newHistory[nextGameId] || 0) + 1;
 
+      // Build game-specific config
+      let gsc: any = {};
+      if (nextGameId === "B7") {
+        if (!nextB7Threshold || nextB7Threshold < 1) { alert("B7: Please set a valid threshold."); setCalculating(false); return; }
+        gsc = { threshold: nextB7Threshold, fixedRouteTime: nextB7FixedTime, revealStep: 0 };
+      }
+      if (nextGameId === "C10") {
+        if (nextC10Sequence.length !== 20) { alert("C10: Generate a 20-number sequence first."); setCalculating(false); return; }
+        gsc = { numberSequence: nextC10Sequence, currentNumberIndex: 0 };
+      }
+
       await updateGameState({
         currentGameId: nextGameId,
         currentRoundTitle: nextGameTitle,
         phase: "lobby",
         timerDuration: nextGameTimer,
         roundType: nextRoundType,
+        customOptions: nextGameId === "A4" || nextGameId === "C9" ? nextCustomOptions : [],
+        gameSpecificConfig: nextGameId === "B7" || nextGameId === "C10" ? gsc : null,
         gameHistory: newHistory,
         results: null,
         submissionsCount: 0
@@ -435,7 +482,7 @@ export default function AdminDashboard() {
                      </div>
 
                      <div className="w-full pt-4">
-                        <AdminGameStats gameState={gameState} players={players} />
+                        <AdminGameStats gameState={gameState} players={players} onUpdateGameState={updateGameState} />
                      </div>
                   </div>
                 )}
@@ -631,7 +678,91 @@ export default function AdminDashboard() {
                           />
                         </div>
 
-                        <div className="flex items-end">
+                        {(nextGameId === "A4" || nextGameId === "C9") && (
+                          <div className="col-span-2 space-y-3 p-4 border border-secondary/50 bg-secondary/5 shadow-glow-gold">
+                            <label className="text-[10px] text-secondary uppercase tracking-widest block font-bold">Custom Option Labels</label>
+                            {[0, 1, 2, 3].map(i => (
+                               <input 
+                                  key={i}
+                                  type="text"
+                                  placeholder={`Option ${String.fromCharCode(65 + i)}`}
+                                  value={nextCustomOptions[i]}
+                                  onChange={(e) => {
+                                    const nextOpts = [...nextCustomOptions];
+                                    nextOpts[i] = e.target.value;
+                                    setNextCustomOptions(nextOpts);
+                                  }}
+                                  className="w-full bg-background border border-border px-3 py-2 text-textDefault focus:border-secondary outline-none text-xs"
+                               />
+                            ))}
+                          </div>
+                        )}
+
+                        {/* B7 Config */}
+                        {nextGameId === "B7" && (
+                          <div className="col-span-2 space-y-4 p-4 border border-primary/50 bg-primary/5">
+                            <label className="text-[10px] text-primary uppercase tracking-widest block font-bold">B7 — Route 2 Threshold</label>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-1">
+                                <label className="text-[10px] text-textMuted uppercase tracking-widest">Threshold (Route 2 slower when ≥)</label>
+                                <input type="number" value={nextB7Threshold} onChange={e => setNextB7Threshold(parseInt(e.target.value)||1)}
+                                  className="w-full bg-background border border-border px-3 py-2 text-textDefault focus:border-primary outline-none text-sm" />
+                                <p className="text-[9px] text-textMuted">≈ 40–60% of expected player count</p>
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[10px] text-textMuted uppercase tracking-widest">Route 1 Fixed Time (min, display)</label>
+                                <input type="number" value={nextB7FixedTime} onChange={e => setNextB7FixedTime(parseInt(e.target.value)||25)}
+                                  className="w-full bg-background border border-border px-3 py-2 text-textDefault focus:border-primary outline-none text-sm" />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* C10 Config */}
+                        {nextGameId === "C10" && (
+                          <div className="col-span-2 space-y-4 p-4 border border-secondary/50 bg-secondary/5 shadow-glow-gold">
+                            <div className="flex items-center justify-between">
+                              <label className="text-[10px] text-secondary uppercase tracking-widest block font-bold">C10 — 20-Number Sequence</label>
+                              <button onClick={generateC10Sequence} className="text-[10px] border border-secondary px-3 py-1 text-secondary hover:bg-secondary hover:text-background transition-colors uppercase tracking-widest">
+                                Generate Curve
+                              </button>
+                            </div>
+                            {nextC10Sequence.length === 20 ? (
+                              <div>
+                                <p className="text-[9px] text-textMuted mb-2 uppercase tracking-widest">Drag a number onto another to swap positions</p>
+                                <div className="grid grid-cols-10 gap-1">
+                                  {nextC10Sequence.map((n, i) => (
+                                    <div
+                                      key={i}
+                                      draggable
+                                      onDragStart={() => setC10DragSrc(i)}
+                                      onDragOver={e => e.preventDefault()}
+                                      onDrop={() => { if (c10DragSrc !== null && c10DragSrc !== i) swapC10Cards(c10DragSrc, i); setC10DragSrc(null); }}
+                                      className={`flex flex-col items-center justify-center aspect-square border cursor-grab active:cursor-grabbing transition-all
+                                        ${i >= 7 && i <= 11 ? 'border-secondary/70 bg-secondary/10' : 'border-border bg-background'}
+                                        ${n >= 90 ? 'text-secondary font-bold' : 'text-textMuted'}
+                                        ${c10DragSrc === i ? 'opacity-40 scale-95' : 'hover:border-textDefault'}`}
+                                    >
+                                      <span className="text-[10px] font-mono leading-none">{n}</span>
+                                      <span className="text-[7px] text-textMuted/50">{i+1}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                                <div className="flex justify-between text-[9px] text-textMuted mt-2">
+                                  <span>Peak: {Math.max(...nextC10Sequence)} at pos {nextC10Sequence.indexOf(Math.max(...nextC10Sequence))+1}</span>
+                                  <span className="text-secondary">█ = optimal window (pos 8–12)</span>
+                                </div>
+                                {nextC10Sequence.map((n, i) => (
+                                  <input key={i} type="hidden" />
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-textMuted">Click "Generate Curve" to build a sequence, then drag cells to rearrange.</p>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="flex items-end col-span-2 mt-4">
                            <button 
                              onClick={startDynamicRound}
                              disabled={calculating}

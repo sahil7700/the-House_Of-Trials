@@ -149,9 +149,19 @@ export function calculateA3(submissions: Submission[], config: GameSlotConfig): 
 }
 
 export function calculateA4(submissions: Submission[], config: GameSlotConfig): CalculationResult {
+  const customOpts = config.config.gameSpecificConfig?.customOptions as string[] | undefined;
+  const options = customOpts && customOpts.length > 0 && customOpts.some(o => o.trim() !== "") 
+     ? customOpts 
+     : ["Option A", "Option B", "Option C", "Option D"];
+
   // value is array of strings e.g. ["B", "C", "A", "D"]
   const points: Record<string, number> = {};
   const firstChoiceCounts: Record<string, number> = {};
+  
+  options.forEach(o => {
+    points[o] = 0;
+    firstChoiceCounts[o] = 0;
+  });
   
   submissions.forEach(s => {
     if (Array.isArray(s.value)) {
@@ -183,34 +193,92 @@ export function calculateA4(submissions: Submission[], config: GameSlotConfig): 
 }
 
 export function calculateB7(submissions: Submission[], config: GameSlotConfig): CalculationResult {
-  // value is "Route 1" or "Route 2"
+  // GameB7.tsx submits integers: 1 = Route 1, 2 = Route 2
   const threshold = config.config.gameSpecificConfig?.threshold || 30;
-  
-  const route2Count = submissions.filter(s => s.value === "Route 2").length;
-  const route1Count = submissions.filter(s => s.value === "Route 1").length;
-  
-  let eliminatedRoute = route2Count >= threshold ? "Route 2" : "Route 1";
-  
-  const eliminatedPlayerIds = submissions.filter(s => s.value === eliminatedRoute).map(s => s.playerId);
+  const bonus = config.config.gameSpecificConfig?.bonus || 0;
+
+  const route1Count = submissions.filter(s => Number(s.value) === 1).length;
+  const route2Count = submissions.filter(s => Number(s.value) === 2).length;
+
+  // Route 2 is slower when its count >= threshold (strict per spec)
+  const r2Slower = route2Count >= threshold;
+  const eliminatedRouteNum = r2Slower ? 2 : 1;
+  const fastRouteNum = r2Slower ? 1 : 2;
+
+  const eliminatedPlayerIds = submissions
+    .filter(s => Number(s.value) === eliminatedRouteNum)
+    .map(s => s.playerId);
+
+  // Underdog bonus: players on the route with fewer people
+  const underdogRoute = route1Count < route2Count ? 1 : 2;
 
   return {
-    results: { route1Count, route2Count, eliminatedRoute },
+    results: {
+      route1Count,
+      route2Count,
+      eliminatedRoute: eliminatedRouteNum,
+      threshold,
+      bonus,
+      underdogRoute
+    },
     eliminatedPlayerIds
   };
 }
 
 export function calculateC10(submissions: Submission[], config: GameSlotConfig): CalculationResult {
-  // value: claimed number
-  const sorted = [...submissions].sort((a, b) => Number(b.value || 0) - Number(a.value || 0)); // Highest survived
+  const sequence: number[] = config.config.gameSpecificConfig?.numberSequence || [];
+  const optimalWindowEnabled = config.config.gameSpecificConfig?.optimalBonus !== false;
+  const optimalBonus = 30;
   
-  const elimPercentage = config.config.eliminationValue || 80; // Default eliminate bottom 80%
+  // Survival: top N% or top N players
+  const elimPercentage = config.config.eliminationValue || 80; // bottom 80% eliminated
+  
+  // Each submission.value may be a scalar OR an object {value, claimedAtIndex, autoAssigned}
+  // Normalize before processing
+  const normalizedSubs = submissions.map(sub => {
+    const raw = sub.value;
+    if (raw !== null && typeof raw === "object") {
+      return { ...sub, value: Number(raw.value ?? 0), claimedAtIndex: raw.claimedAtIndex ?? null, autoAssigned: raw.autoAssigned ?? false };
+    }
+    return { ...sub, value: Number(raw ?? 0), claimedAtIndex: sub.claimedAtIndex ?? null, autoAssigned: sub.autoAssigned ?? false };
+  });
+
+  const sorted = [...normalizedSubs].sort((a, b) => b.value - a.value);
   const elimCount = Math.floor(submissions.length * (elimPercentage / 100));
+  const surviveCount = submissions.length - elimCount;
   
-  const eliminatedSeries = sorted.slice(sorted.length - elimCount);
-  const eliminatedPlayerIds = eliminatedSeries.map(s => s.playerId);
+  const peakNumber = sequence.length > 0 ? Math.max(...sequence) : 0;
+  const peakPosition = sequence.indexOf(peakNumber);
+  
+  const eliminatedPlayerIds: string[] = [];
+  const playerStats: Record<string, any> = {};
+  
+  sorted.forEach((sub, rank0) => {
+    const rank = rank0 + 1;
+    const claimed = sub.value;
+    const eliminated = rank > surviveCount;
+    
+    // Find which position index they claimed at (stored in sub.claimedAtIndex if we track it)
+    const claimedAtPos = sub.claimedAtIndex ?? null; // 0-based position in sequence
+    const inOptimalWindow = claimedAtPos !== null && claimedAtPos >= 7 && claimedAtPos <= 11;
+    const bonus = optimalWindowEnabled && inOptimalWindow && !eliminated ? optimalBonus : 0;
+    
+    let reason = "";
+    if (eliminated) {
+      if (claimedAtPos !== null && claimedAtPos <= 2) reason = `Claimed too early: ${claimed} at position ${claimedAtPos + 1}.`;
+      else if (sub.autoAssigned) reason = `Did not claim — assigned last number (${claimed}).`;
+      else reason = `You were close: claimed ${claimed}, but the cutoff was higher.`;
+    } else {
+      if (inOptimalWindow) reason = `Optimal window claim at position ${claimedAtPos! + 1}. Smart timing.`;
+      else reason = `Claimed ${claimed} and ranked #${rank}.`;
+    }
+    
+    playerStats[sub.playerId] = { rank, claimed, eliminated, reason, bonus, claimedAtPos, inOptimalWindow };
+    if (eliminated) eliminatedPlayerIds.push(sub.playerId);
+  });
 
   return {
-    results: { topClaim: sorted[0]?.value },
+    results: { playerStats, peakNumber, peakPosition, totalPlayers: submissions.length, surviveCount },
     eliminatedPlayerIds
   };
 }

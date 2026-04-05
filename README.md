@@ -63,8 +63,9 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ### Preparation
 1. **Initialize Database**: The first time you launch the app, log into `/admin` with your email/password credentials. You will be greeted with an **Initialize Database** button. Click it to automatically scaffold your Firestore collections!
-2. **Admin**: Open `/admin/dashboard` in a desktop browser.
-3. **Display**: Open `/admin/display` on the projector.
+2. **Admin Dashboard**: Open `/admin/dashboard` in a desktop browser.
+3. **Projector Display**: Open `/projector?key=dummy_key_if_not_set` on the main screen.
+   - *Note: The security key is defined in your `.env.local` or defaults to `dummy_key_if_not_set`.*
 4. **Players**: Go to the landing page `/` and click "Enter the Arena".
 
 ### Phase 1: Registration

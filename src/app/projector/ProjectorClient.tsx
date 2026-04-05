@@ -182,6 +182,57 @@ export default function ProjectorClient() {
           </div>
         );
       }
+      
+      if (activeGameId === "C10") {
+        const sequence: number[] = gsc.numberSequence || [];
+        const currentIndex: number = gsc.currentNumberIndex || 0;
+        const currentNumber = currentIndex > 0 && currentIndex <= sequence.length ? sequence[currentIndex - 1] : null;
+
+        return (
+          <div className="flex flex-col items-center justify-center h-[90%] space-y-12 animate-fade-in z-20 w-[90%] mt-8">
+             <h2 className="text-[64px] font-serif text-white tracking-widest uppercase text-center leading-tight">
+               Peak Finder
+             </h2>
+             
+             <div className="flex flex-col items-center space-y-4">
+                <p className="text-3xl font-mono text-textMuted uppercase tracking-widest">
+                  Position {currentIndex} / 20
+                </p>
+                {currentNumber !== null ? (
+                  <motion.div 
+                    key={currentIndex}
+                    initial={{ scale: 0.5, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    className={`text-[180px] font-mono font-bold leading-none drop-shadow-glow ${currentNumber >= 70 ? 'text-secondary' : currentNumber >= 34 ? 'text-textDefault' : 'text-primary'}`}
+                  >
+                    {currentNumber}
+                  </motion.div>
+                ) : (
+                  <div className="text-[180px] font-mono font-bold leading-none text-textMuted opacity-20">—</div>
+                )}
+             </div>
+
+             <div className="w-full bg-surface border-4 border-border p-8">
+                <div className="grid grid-cols-10 gap-2">
+                   {sequence.map((n, i) => (
+                      <div key={i} className={`flex flex-col items-center justify-center aspect-square border-2 text-2xl font-mono transition-all duration-500
+                        ${i < currentIndex ? 'border-border text-textMuted bg-background/50' : 'border-border/30 text-textMuted/20 bg-surface/30'}
+                        ${i === currentIndex - 1 ? 'border-primary shadow-glow-red scale-110 z-10 bg-primary/10' : ''}
+                        ${i >= 7 && i <= 11 ? 'bg-secondary/5' : ''}
+                      `}>
+                        {i < currentIndex ? n : '—'}
+                        <span className="text-xs text-textMuted/40 mt-1">{i+1}</span>
+                      </div>
+                   ))}
+                </div>
+             </div>
+             
+             <div className="text-xl text-textMuted font-mono uppercase tracking-[0.3em] animate-pulse">
+                {currentIndex < 20 ? "Watch for your target number" : "All numbers revealed"}
+             </div>
+          </div>
+        );
+      }
 
       return (
         <div className="flex flex-col items-center justify-center h-full space-y-16 animate-fade-in z-20 w-3/4">
@@ -369,6 +420,36 @@ export default function ProjectorClient() {
                       </motion.div>
                    );
                 })}
+             </div>
+          </div>
+        );
+      }
+
+      // ------------------------------------
+      // GAME C10: PEAK FINDER REVEAL
+      // ------------------------------------
+      if (activeGameId === "C10" && gameState.results) {
+        const { peakNumber, peakPosition, surviveCount } = gameState.results;
+        return (
+          <div className="flex flex-col items-center justify-center h-full space-y-12 animate-fade-in z-20 w-[90%]">
+             <h2 className="text-[64px] font-serif text-white tracking-widest uppercase">The Sequence Result</h2>
+             <div className="flex gap-24">
+                <div className="text-center">
+                   <p className="text-2xl text-textMuted uppercase mb-4">Peak Number</p>
+                   <p className="text-9xl text-secondary drop-shadow-glow-gold font-mono font-bold">{peakNumber}</p>
+                </div>
+                <div className="text-center">
+                   <p className="text-2xl text-textMuted uppercase mb-4">At Position</p>
+                   <p className="text-9xl text-white font-mono font-bold">{peakPosition + 1}</p>
+                </div>
+             </div>
+             <div className="pt-12 text-center">
+                <p className="text-4xl text-textDefault uppercase tracking-widest font-mono">
+                   {surviveCount} Players Survived
+                </p>
+                <p className="text-xl text-textMuted mt-4 uppercase tracking-[0.4em]">
+                   Verdicts updated on individual devices
+                </p>
              </div>
           </div>
         );

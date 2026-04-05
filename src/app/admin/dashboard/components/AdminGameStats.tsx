@@ -208,9 +208,13 @@ export default function AdminGameStats({ gameState, players, onUpdateGameState, 
     };
 
     const claimLeaderboard = [...claimedPlayers].sort((a, b) => {
-      const valA = Number(typeof a.currentSubmission === "object" && a.currentSubmission !== null ? a.currentSubmission.value : (a.currentSubmission || 0));
-      const valB = Number(typeof b.currentSubmission === "object" && b.currentSubmission !== null ? b.currentSubmission.value : (b.currentSubmission || 0));
-      return valB - valA;
+      const getVal = (p: PlayerData) => {
+        const sub = p.currentSubmission;
+        if (sub === null || sub === undefined) return 0;
+        if (typeof sub === "object") return Number(sub.value ?? 0);
+        return Number(sub);
+      };
+      return getVal(b) - getVal(a);
     });
 
     return (
@@ -268,12 +272,14 @@ export default function AdminGameStats({ gameState, players, onUpdateGameState, 
             <p className="text-[10px] uppercase tracking-widest text-textMuted mb-3">Live Claim Leaderboard</p>
             <div className="space-y-1 max-h-48 overflow-auto">
               {claimLeaderboard.map((p, rank) => {
-                const claimedVal = typeof p.currentSubmission === "object" && p.currentSubmission !== null ? p.currentSubmission.value : p.currentSubmission;
+                const rawSub = p.currentSubmission;
+                const claimedVal = (rawSub !== null && typeof rawSub === "object") ? rawSub.value : rawSub;
+                const displayVal = (claimedVal === null || claimedVal === undefined) ? "—" : String(claimedVal);
                 return (
                   <div key={p.id} className="flex justify-between items-center text-xs font-mono p-2 border-b border-border/50">
                     <span className="text-textMuted">#{rank + 1}</span>
                     <span className="text-textDefault truncate max-w-[100px]">{p.name}</span>
-                    <span className={`font-bold ${Number(claimedVal) >= 70 ? 'text-secondary' : 'text-textDefault'}`}>{claimedVal}</span>
+                    <span className={`font-bold ${Number(claimedVal || 0) >= 70 ? 'text-secondary' : 'text-textDefault'}`}>{displayVal}</span>
                   </div>
                 );
               })}

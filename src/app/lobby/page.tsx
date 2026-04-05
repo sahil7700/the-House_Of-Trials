@@ -36,8 +36,13 @@ export default function LobbyPage() {
 
     const unsubPlayer = subscribeToPlayer(user.uid, (p) => {
       setPlayer(p);
-      if (p && p.status === "eliminated") router.push("/eliminated");
-      if (p && p.status === "winner") router.push("/winner");
+      // If player doc was deleted (e.g. End Event reset), redirect back to join
+      if (p === null) {
+        router.push("/join");
+        return;
+      }
+      if (p.status === "eliminated") router.push("/eliminated");
+      if (p.status === "winner") router.push("/winner");
     });
 
     const unsubGame = subscribeToGameState((state) => {
@@ -67,8 +72,13 @@ export default function LobbyPage() {
     return () => clearInterval(interval);
   }, []);
 
-  if (authLoading || !player) {
+  if (authLoading) {
     return <div className="min-h-screen bg-background flex items-center justify-center font-mono text-primary text-sm tracking-widest uppercase">Connecting...</div>;
+  }
+
+  // Player doc doesn't exist — redirecting to /join (handled in useEffect)
+  if (!player) {
+    return <div className="min-h-screen bg-background flex items-center justify-center font-mono text-primary text-sm tracking-widest uppercase animate-pulse">Redirecting...</div>;
   }
 
   const getStatusMessage = () => {

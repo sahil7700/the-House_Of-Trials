@@ -87,8 +87,25 @@ export default function GameB8({ onSubmit, isLocked, currentSubmission, results,
 
        {/* Public Feed History */}
        <div className="border border-border bg-surface p-4 font-mono text-xs shadow-inner">
-          <p className="uppercase tracking-widest text-textMuted mb-4 border-b border-border/50 pb-2">Public Decision Log</p>
-          <div className="space-y-1 h-48 overflow-y-auto pr-2 custom-scrollbar">
+          <div className="flex justify-between items-center mb-2">
+             <p className="uppercase tracking-widest text-textMuted">Public Decision Log</p>
+          </div>
+          
+          {/* Live Voting Bar */}
+          {publicFeed.length > 0 && (
+             <div className="w-full mb-4">
+                <div className="flex justify-between text-[10px] mb-1">
+                   <span className="text-primary">{publicFeed.filter(f => f.choice === 'RED').length} RED</span>
+                   <span className="text-blue-500">{publicFeed.filter(f => f.choice === 'BLUE').length} BLUE</span>
+                </div>
+                <div className="w-full h-2 bg-background flex overflow-hidden border border-border">
+                   <div style={{ width: `${(publicFeed.filter(f => f.choice === 'RED').length / publicFeed.length) * 100}%` }} className="h-full bg-primary transition-all duration-500"></div>
+                   <div style={{ width: `${(publicFeed.filter(f => f.choice === 'BLUE').length / publicFeed.length) * 100}%` }} className="h-full bg-blue-500 transition-all duration-500"></div>
+                </div>
+             </div>
+          )}
+
+          <div className="space-y-1 h-48 overflow-y-auto pr-2 custom-scrollbar border-t border-border/50 pt-2">
              {publicFeed.length === 0 && <p className="text-textMuted/50 text-center italic mt-16">No decisions made yet.</p>}
              {publicFeed.map((f, i) => (
                 <motion.div 

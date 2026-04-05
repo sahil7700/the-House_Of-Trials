@@ -52,20 +52,36 @@ export async function POST(req: NextRequest) {
        if (pb?.currentSubmission?.type === "guess") pair.playerB_guess = pb.currentSubmission.value;
     }
 
-    // Calculate scores for each pair
+    const pointsDeltaMap: Record<string, number> = {};
+    const baseWinPoints = 80;
+    const exactMatchPoints = 10;
+    const exactMatchBonusEnabled = config.exactMatchBonus !== false;
+
+    // Calculate scores and initialize points
     for (const pair of pairs) {
+      pointsDeltaMap[pair.playerAId] = 0;
+      pointsDeltaMap[pair.playerBId] = 0;
+
       if (pair.playerA_sequence && pair.playerB_guess) {
-        pair.playerB_score = pair.playerB_guess.reduce((sum: number, guessVal: number, i: number) => {
-          return sum + Math.abs(guessVal - pair.playerA_sequence![i]);
-        }, 0);
+        let scoreB = 0;
+        pair.playerB_guess.forEach((guessVal: number, i: number) => {
+          const diff = Math.abs(guessVal - pair.playerA_sequence![i]);
+          scoreB += diff;
+          if (diff === 0 && exactMatchBonusEnabled) pointsDeltaMap[pair.playerBId] += exactMatchPoints;
+        });
+        pair.playerB_score = scoreB;
       } else {
-         pair.playerB_score = 999; // Penalty for missing input
+         pair.playerB_score = 999;
       }
 
       if (pair.playerB_sequence && pair.playerA_guess) {
-        pair.playerA_score = pair.playerA_guess.reduce((sum: number, guessVal: number, i: number) => {
-          return sum + Math.abs(guessVal - pair.playerB_sequence![i]);
-        }, 0);
+        let scoreA = 0;
+        pair.playerA_guess.forEach((guessVal: number, i: number) => {
+          const diff = Math.abs(guessVal - pair.playerB_sequence![i]);
+          scoreA += diff;
+          if (diff === 0 && exactMatchBonusEnabled) pointsDeltaMap[pair.playerAId] += exactMatchPoints;
+        });
+        pair.playerA_score = scoreA;
       } else {
          pair.playerA_score = 999;
       }
@@ -76,27 +92,30 @@ export async function POST(req: NextRequest) {
         pair.loserId = pair.playerBId;
         pair.tied = false;
         eliminatedIds.push(pair.playerBId);
+        pointsDeltaMap[pair.playerAId] += baseWinPoints;
       } else if (pair.playerB_score < pair.playerA_score) {
         pair.winnerId = pair.playerBId;
         pair.loserId = pair.playerAId;
         pair.tied = false;
         eliminatedIds.push(pair.playerAId);
+        pointsDeltaMap[pair.playerBId] += baseWinPoints;
       } else {
         pair.tied = true;
         pair.winnerId = null;
         pair.loserId = null;
 
-        if (tieBreaker === "eliminate_all") {
+        if (tieBreaker === "eliminate_all" || tieBreaker === "eliminate_both") {
           if (pair.playerAId) eliminatedIds.push(pair.playerAId);
           if (pair.playerBId) eliminatedIds.push(pair.playerBId);
-        } else if (tieBreaker === "eliminate_none") {
-          // both safe
+        } else if (tieBreaker === "eliminate_none" || tieBreaker === "survive_both") {
+          pointsDeltaMap[pair.playerAId] += baseWinPoints;
+          pointsDeltaMap[pair.playerBId] += baseWinPoints;
         }
-        // "admin" leaves them alone, and admin decides later
+        // "admin" leaves them alone, admin resolves manually later
       }
     }
 
-    return NextResponse.json({ success: true, pairs, eliminatedPlayerIds: eliminatedIds });
+    return NextResponse.json({ success: true, pairs, eliminatedPlayerIds: eliminatedIds, pointsDeltaMap });
   } catch (error: any) {
     console.error("Calculate Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });

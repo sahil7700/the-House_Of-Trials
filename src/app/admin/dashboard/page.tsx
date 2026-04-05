@@ -112,10 +112,11 @@ export default function AdminDashboard() {
       const fresh: Record<string, PlayerRoundUpdate> = {};
       players.filter(p => p.status === "alive").forEach(p => {
         const isEliminated = eliminatedIds.includes(p.id);
+        const mapDelta = gameState.results.pointsDeltaMap?.[p.id];
         fresh[p.id] = {
           uid: p.id,
           status: isEliminated ? "eliminated" : "alive",
-          pointsDelta: isEliminated ? 0 : 10 // Default 10 pts for survival
+          pointsDelta: mapDelta !== undefined ? mapDelta : (isEliminated ? 0 : 10) // Fallback to 10 for generic games
         };
       });
       setPendingUpdates(fresh);
@@ -231,7 +232,7 @@ export default function AdminDashboard() {
          await batch.commit();
 
          await updateGameState({ 
-            results: { pairs: data.pairs, eliminatedPlayerIds: data.eliminatedPlayerIds, message: "Calculations Complete" }, 
+            results: { pairs: data.pairs, eliminatedPlayerIds: data.eliminatedPlayerIds, pointsDeltaMap: data.pointsDeltaMap, message: "Calculations Complete" }, 
             phase: "reveal" 
          });
          
@@ -580,8 +581,8 @@ export default function AdminDashboard() {
                         </div>
                       )}
 
-                      {/* A4 / C9 Custom Options Config */}
-                      {(activeGameId === "A4" || activeGameId === "C9") && (
+                      {/* A4 Custom Options Config */}
+                      {activeGameId === "A4" && (
                         <div className="w-full space-y-3 p-4 border border-secondary/50 bg-secondary/5 shadow-glow-gold">
                           <label className="text-[10px] text-secondary uppercase tracking-widest block font-bold">Custom Option Labels</label>
                           {[0, 1, 2, 3].map(i => (
@@ -658,10 +659,18 @@ export default function AdminDashboard() {
                           )}
                         </div>
                       )}
+
+                      {/* B6 / B8 / C9 Complex Natively Routed Configs */}
+                      {["B6", "B8", "C9"].includes(activeGameId) && (
+                         <div className="w-full">
+                            <AdminGameStats gameState={gameState} players={players} onUpdateGameState={updateGameState} activeGameId={activeGameId} />
+                         </div>
+                      )}
                     </div>
 
-                    <button 
-                       onClick={() => {
+                    {!["B6", "B8", "C9"].includes(activeGameId) && (
+                      <button 
+                         onClick={() => {
                           let gsc: any = {};
                           if (activeGameId === "A1") {
                             gsc = { multiplier: nextA1Multiplier };
@@ -682,7 +691,7 @@ export default function AdminDashboard() {
                             phase: "active",
                             playersAlive: totalAlive,
                             submissionsCount: 0,
-                            customOptions: (activeGameId === "A4" || activeGameId === "C9") ? nextCustomOptions : [],
+                            customOptions: activeGameId === "A4" ? nextCustomOptions : [],
                             gameSpecificConfig: (activeGameId === "A1" || activeGameId === "A3" || activeGameId === "B7" || activeGameId === "C10") ? gsc : null,
                           });
                           startTimer(gameState.timerDuration || 60);
@@ -691,6 +700,7 @@ export default function AdminDashboard() {
                     >
                       START ROUND TIMER
                     </button>
+                    )}
                   </div>
                 )}
                 
@@ -984,7 +994,7 @@ export default function AdminDashboard() {
                           </div>
                         )}
 
-                        {(nextGameId === "A4" || nextGameId === "C9") && (
+                        {nextGameId === "A4" && (
                           <div className="col-span-2 space-y-3 p-4 border border-secondary/50 bg-secondary/5 shadow-glow-gold">
                             <label className="text-[10px] text-secondary uppercase tracking-widest block font-bold">Custom Option Labels</label>
                             {[0, 1, 2, 3].map(i => (

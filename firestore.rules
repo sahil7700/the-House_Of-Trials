@@ -42,12 +42,9 @@ service cloud.firestore {
       
       // Players can only write to their own document
       allow create: if isAuthenticated() && isPlayer(playerId);
-      allow update: if isAuthenticated() && isPlayer(playerId) && 
-        // Prevent players from modifying their own status/points through direct write
-        // Only allow updating currentSubmission and submittedAt
-        request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['currentSubmission', 'submittedAt', 'lastSeen']);
-      allow delete: if false; // Never delete players
+      allow update: if (isAuthenticated() && isPlayer(playerId) && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentSubmission', 'submittedAt', 'lastSeen'])) || isAdminUser();
+      allow delete: if isAdminUser();
     }
     
     // Submissions collection - immutable once written
@@ -60,7 +57,7 @@ service cloud.firestore {
       allow create: if isAuthenticated() && 
         // The player can only create submissions with their own uid
         request.resource.data.playerId == request.auth.uid;
-      allow update, delete: if false;
+      allow update, delete: if isAdminUser();
     }
     
     // Pairs collection - for C9 sequence match game

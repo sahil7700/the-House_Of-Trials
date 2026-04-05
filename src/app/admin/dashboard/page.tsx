@@ -428,23 +428,65 @@ export default function AdminDashboard() {
         gsc = { numberSequence: nextC10Sequence, currentNumberIndex: 0 };
       }
 
-      await updateGameState({
+      // NEW: Update eventConfig if this slot doesn't exist or is different
+      const currentSlots = [...(eventConfig?.slots || [])];
+      const slotIndex = currentSlots.findIndex(s => s.slotNumber === gameState.currentSlot);
+      
+      const slotData: any = {
+        slotNumber: gameState.currentSlot,
+        gameId: nextGameId,
+        gameName: nextGameTitle,
+        status: "active",
+        config: {
+            timerSeconds: nextGameTimer,
+            pointsFirst: 0,
+            pointsSecond: 0,
+            pointsThird: 0,
+            pointsSafe: 10,
+            pointsEliminated: 0,
+            eliminationMode: "fixed",
+            eliminationValue: 0,
+            advancementCount: 0,
+            tieBreaker: "eliminate_all",
+            penaltyNoSubmit: 0,
+            bonusTopN: 0,
+            visibleToPlayers: true,
+            gameSpecificConfig: gsc
+        }
+      };
+
+      if (slotIndex === -1) {
+        currentSlots.push(slotData);
+      } else {
+        currentSlots[slotIndex] = slotData;
+      }
+      
+      const batchCombined = writeBatch(db);
+      
+      // Update eventConfig
+      batchCombined.update(doc(db, "system", "eventConfig"), { slots: currentSlots });
+
+      // Update Game State
+      batchCombined.update(doc(db, "system", "gameState"), {
         currentGameId: nextGameId,
         currentRoundTitle: nextGameTitle,
         phase: "lobby",
         timerDuration: nextGameTimer,
         roundType: nextRoundType,
         customOptions: nextGameId === "A4" || nextGameId === "C9" ? nextCustomOptions : [],
-        gameSpecificConfig: (nextGameId === "A1" || nextGameId === "A3" || nextGameId === "B7" || nextGameId === "C10") ? gsc : null,
+        gameSpecificConfig: (nextGameId === "A1" || nextGameId === "A3" || nextGameId === "B7" || nextGameId === "C10") ? gsc : (nextGameId === "B8" ? {} : null),
         gameHistory: newHistory,
         results: null,
-        submissionsCount: 0
+        submissionsCount: 0,
+        phaseEndsAt: null, // Reset timers
+        timerStartedAt: null
       });
+
       // Clear player submissions
-      const snap = await getDocs(collection(db, "players"));
-      const batch = writeBatch(db);
-      snap.docs.forEach(d => batch.update(d.ref, { currentSubmission: null, submittedAt: null }));
-      await batch.commit();
+      const pSnap = await getDocs(collection(db, "players"));
+      pSnap.docs.forEach(d => batchCombined.update(d.ref, { currentSubmission: null, submittedAt: null }));
+      
+      await batchCombined.commit();
       
       alert(`Round "${nextGameTitle}" started!`);
     } catch (e: any) {
@@ -480,6 +522,69 @@ export default function AdminDashboard() {
     });
   };
 
+  const handleEndEvent = async () => {
+    const confirmed = confirm(
+      "⚠️ END EVENT — This will permanently delete ALL players, submissions, and game data, and reset to 0 slots. This cannot be undone.\n\nType OK to confirm."
+    );
+    if (!confirmed) return;
+
+    try {
+      // 1. Delete all players
+      const pSnap = await getDocs(collection(db, "players"));
+      const b1 = writeBatch(db);
+      pSnap.docs.forEach(d => b1.delete(d.ref));
+      await b1.commit();
+
+      // 2. Delete all submissions
+      const sSnap = await getDocs(collection(db, "submissions"));
+      const b2 = writeBatch(db);
+      sSnap.docs.forEach(d => b2.delete(d.ref));
+      await b2.commit();
+
+      // 3. Delete lemonAssignments and marketTrades
+      const laSnap = await getDocs(collection(db, "lemonAssignments"));
+      const mtSnap = await getDocs(collection(db, "marketTrades"));
+      const b3 = writeBatch(db);
+      laSnap.docs.forEach(d => b3.delete(d.ref));
+      mtSnap.docs.forEach(d => b3.delete(d.ref));
+      await b3.commit();
+
+      // 4. Reset system docs — clean slate, 0 slots, slot 1 ready
+      const b4 = writeBatch(db);
+      b4.set(doc(db, "system", "eventConfig"), {
+        eventName: "New Event",
+        totalSlots: 100,
+        slots: []
+      });
+      b4.set(doc(db, "system", "gameState"), {
+        currentSlot: 1,
+        phase: "lobby",
+        currentGameId: "",
+        currentRoundTitle: "",
+        playersAlive: 0,
+        totalRegistered: 0,
+        submissionsCount: 0,
+        timerDuration: 60,
+        timerStartedAt: null,
+        phaseEndsAt: null,
+        timerPaused: false,
+        results: null,
+        pendingEliminations: [],
+        displayMessage: null,
+        emergencyPause: false,
+        wildEntryOpen: false,
+        roundType: "standard",
+        winnerId: null,
+        gameHistory: {}
+      });
+      await b4.commit();
+
+      alert("✅ Event ended. Database cleared. You can now create slots and start a new event.");
+    } catch (e: any) {
+      alert("Error ending event: " + e.message);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-background text-textDefault flex flex-col font-mono">
       <header className="bg-surface border-b border-border p-4 flex justify-between items-center z-10 sticky top-0">
@@ -510,7 +615,7 @@ export default function AdminDashboard() {
           </button>
           <button
             onClick={() => { if(confirm("Reset current slot to 1?")) resetToSlotOne(); }}
-            className="bg-surface border border-border px-4 py-2 uppercase text-xs hover:bg-border transition-colors mr-2"
+            className="bg-surface border border-border px-4 py-2 uppercase text-xs hover:bg-border transition-colors"
           >
             ↺ RESET SLOT
           </button>
@@ -520,23 +625,51 @@ export default function AdminDashboard() {
           >
             {gameState.emergencyPause ? "RESUME EVENT" : "EMERGENCY PAUSE"}
           </button>
+          <button
+            onClick={handleEndEvent}
+            className="bg-red-900/40 border border-red-700 text-red-400 hover:bg-red-800 hover:text-white px-4 py-2 uppercase text-xs font-bold transition-colors ml-4"
+          >
+            ✕ END EVENT
+          </button>
         </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
         
         <aside className="w-64 border-r border-border bg-surface/50 p-4 space-y-2 overflow-y-auto hidden md:block">
-          <p className="text-textMuted uppercase tracking-widest border-b border-border pb-2 mb-4 text-xs">Sequence</p>
+          <div className="flex items-center justify-between border-b border-border pb-2 mb-4">
+            <p className="text-textMuted uppercase tracking-widest text-xs">Sequence</p>
+            <span className="text-[10px] text-textMuted font-mono">{eventConfig.slots.length} slots</span>
+          </div>
+
+          {eventConfig.slots.length === 0 && (
+            <div className="border border-dashed border-secondary/30 p-4 text-center space-y-2">
+              <p className="text-[10px] text-textMuted uppercase tracking-widest">No slots yet</p>
+              <p className="text-[10px] text-secondary">Pick a game below to create Slot 1 →</p>
+            </div>
+          )}
+
           {eventConfig.slots.map(s => {
             const isPast = s.slotNumber < gameState.currentSlot;
             const isCurrent = s.slotNumber === gameState.currentSlot;
             return (
               <div key={s.slotNumber} className={`p-3 border text-xs leading-relaxed ${isCurrent ? 'bg-secondary/20 border-secondary text-secondary shadow-glow-gold' : isPast ? 'bg-primary/10 border-primary/50 text-textMuted/50' : 'bg-background border-border text-textMuted'}`}>
-                <div className="uppercase tracking-widest font-bold">Slot {s.slotNumber}</div>
-                <div className="truncate">{s.gameName}</div>
+                <div className="flex items-center justify-between">
+                  <span className="uppercase tracking-widest font-bold">Slot {s.slotNumber}</span>
+                  {isCurrent && <span className="text-[8px] text-secondary bg-secondary/20 px-1 uppercase">Active</span>}
+                  {isPast && <span className="text-[8px] text-textMuted/50">Done</span>}
+                </div>
+                <div className="truncate mt-0.5 text-[10px]">{s.gameName}</div>
               </div>
             );
           })}
+
+          {/* Next slot indicator */}
+          {eventConfig.slots.length > 0 && (
+            <div className="border border-dashed border-secondary/20 p-3 text-center mt-2">
+              <p className="text-[10px] text-secondary/60 uppercase tracking-widest">Slot {gameState.currentSlot + eventConfig.slots.filter(s => s.slotNumber >= gameState.currentSlot).length} — Pick next</p>
+            </div>
+          )}
         </aside>
 
         <div className="flex-1 p-6 overflow-auto bg-scanlines relative">

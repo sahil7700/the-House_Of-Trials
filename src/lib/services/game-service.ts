@@ -1,6 +1,29 @@
 import { db } from "@/lib/firebase";
-import { doc, onSnapshot, setDoc, serverTimestamp, updateDoc, increment } from "firebase/firestore";
-import { PlayerData } from "./player-service";
+import { doc, onSnapshot, serverTimestamp, increment, writeBatch, getDoc } from "firebase/firestore";
+import { checkRateLimit, checkIdempotency } from "./rate-limit";
+
+// ==========================================
+// VALID GAME PHASES (state machine)
+// ==========================================
+
+export const VALID_PHASE_TRANSITIONS: Record<GamePhase, GamePhase[]> = {
+  lobby: ["active", "active_a"],
+  active: ["locked"],
+  locked: ["calculating", "reveal"],
+  calculating: ["reveal"],
+  reveal: ["confirm"],
+  confirm: ["standby", "game_over"],
+  standby: ["active", "active_a", "active_b", "lobby"],
+  game_over: [],
+  active_a: ["locked_a"],
+  locked_a: ["active_b"],
+  active_b: ["locked_b"],
+  locked_b: ["calculating"],
+};
+
+export function isValidPhaseTransition(from: GamePhase, to: GamePhase): boolean {
+  return VALID_PHASE_TRANSITIONS[from]?.includes(to) ?? false;
+}
 
 // ==========================================
 // V2 ARCHITECTURE - GAME SLOTS
@@ -96,20 +119,79 @@ export const subscribeToEventConfig = (callback: (config: EventConfig | null) =>
 };
 
 // ==========================================
-// SUBMISSIONS
+// SUBMISSIONS (with rate limiting + idempotency)
 // ==========================================
 
-export const submitGameInput = async (uid: string, name: string, slotNumber: number, gameId: string, value: any) => {
-  // Update player doc to show they submitted this round intuitively for the dashboard
-  const playerRef = doc(db, "players", uid);
-  await updateDoc(playerRef, {
+export interface SubmitResult {
+  success: boolean;
+  error?: string;
+  duplicate?: boolean;
+  existingValue?: any;
+}
+
+export const submitGameInput = async (
+  uid: string,
+  name: string,
+  slotNumber: number,
+  gameId: string,
+  value: any
+): Promise<SubmitResult> => {
+  // 1. Check idempotency — prevent duplicate submissions for same slot
+  const { duplicate, existingValue } = await checkIdempotency(uid, slotNumber, gameId);
+  if (duplicate) {
+    return { success: false, error: "Submission already received for this round.", duplicate: true, existingValue };
+  }
+
+  // 2. Check rate limit
+  const { allowed, reason } = await checkRateLimit(uid, slotNumber);
+  if (!allowed) {
+    return { success: false, error: reason };
+  }
+
+  // 3. Verify game is in an active submission phase
+  const gameStateRef = doc(db, "system", "gameState");
+  const gameStateSnap = await getDoc(gameStateRef);
+  if (!gameStateSnap.exists()) {
+    return { success: false, error: "No active game." };
+  }
+  
+  const gs = gameStateSnap.data() as GameState;
+  const activePhases = ["active", "active_a", "active_b", "open_a", "open_b"];
+  if (!activePhases.includes(gs.phase)) {
+    return { success: false, error: `Cannot submit in phase: ${gs.phase}. Submissions are closed.` };
+  }
+  
+  if (gs.currentSlot !== slotNumber) {
+    return { success: false, error: "Slot mismatch. Please refresh." };
+  }
+
+  // 4. Check if player already submitted for this slot (guard)
+  const submissionRef = doc(db, "submissions", `${slotNumber}_${uid}`);
+  const existingSnap = await getDoc(submissionRef);
+  if (existingSnap.exists()) {
+    // Already submitted — return success with existing value
+    return { success: true, duplicate: true, existingValue: existingSnap.data().value };
+  }
+
+  // 5. Atomic write: set idempotency key + submission + player update + counter increment
+  const batch = writeBatch(db);
+  
+  // Set idempotency key first
+  batch.set(doc(db, "idempotencyKeys", `${slotNumber}_${uid}`), {
+    gameId,
+    value,
+    submittedAt: serverTimestamp(),
+    slotNumber,
+  }, { merge: true });
+
+  // Update player submission status
+  batch.update(doc(db, "players", uid), {
     currentSubmission: value,
-    submittedAt: serverTimestamp()
+    submittedAt: serverTimestamp(),
   });
 
-  // Add to submissions per slot
-  const submissionRef = doc(db, "submissions", `${slotNumber}_${uid}`);
-  await setDoc(submissionRef, {
+  // Create submission document
+  batch.set(submissionRef, {
     playerId: uid,
     playerName: name,
     slotNumber,
@@ -119,12 +201,15 @@ export const submitGameInput = async (uid: string, name: string, slotNumber: num
     score: null,
     rank: null,
     pointsAwarded: null,
-    eliminated: null
+    eliminated: null,
   });
 
-  // Increment live submission counter in gameState
-  const gameStateRef = doc(db, "system", "gameState");
-  await updateDoc(gameStateRef, {
-    submissionsCount: increment(1)
+  // Increment submission counter
+  batch.update(gameStateRef, {
+    submissionsCount: increment(1),
   });
+
+  await batch.commit();
+  
+  return { success: true };
 };

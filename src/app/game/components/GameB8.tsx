@@ -1,8 +1,6 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { db } from "@/lib/firebase";
-import { doc, updateDoc, getDoc } from "firebase/firestore";
 
 interface GameB8Props {
   onSubmit: (val: any) => void;
@@ -16,7 +14,9 @@ interface GameB8Props {
 
 export default function GameB8({ onSubmit, isLocked, currentSubmission, results, playerId, timeLeft, gameState }: GameB8Props) {
   const [showConfirm, setShowConfirm] = useState<"RED" | "BLUE" | null>(null);
-  const advancedRef = useRef(false); // singleton guard — only one client advances the queue
+  const [advancing, setAdvancing] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
+  const autoSubmitRef = useRef<NodeJS.Timeout | null>(null);
 
   const gsc = gameState?.gameSpecificConfig || {};
   const queue: string[] = gsc.queue || [];
@@ -31,63 +31,59 @@ export default function GameB8({ onSubmit, isLocked, currentSubmission, results,
   const myTurnHasPassed = myQueueIndex !== -1 && myQueueIndex < currentTurnIndex;
   const inQueue = myQueueIndex !== -1;
 
-  // ── TURN ADVANCE LOGIC (client-side, player-driven) ──
-  // When it is MY turn and I have submitted, I advance the queue for everyone.
-  // useRef guard ensures only one advancement fires per submission.
-  useEffect(() => {
-    if (
-      !isMyTurn ||
-      currentSubmission === null ||
-      currentSubmission === undefined ||
-      advancedRef.current ||
-      gameState?.phase !== "active"
-    ) return;
+  // Server-side turn advancement
+  const advanceTurn = useCallback(async (choice: "RED" | "BLUE") => {
+    if (advancing) return;
+    setAdvancing(true);
+    setServerError(null);
 
-    const advance = async () => {
-      advancedRef.current = true;
-      try {
-        const gameStateRef = doc(db, "system", "gameState");
-        const snap = await getDoc(gameStateRef);
-        if (!snap.exists()) return;
-        const live = snap.data() as any;
-        const liveGsc = live.gameSpecificConfig || {};
-        const liveIndex = liveGsc.currentTurnIndex ?? 0;
+    try {
+      const res = await fetch("/api/game/b8-advance-turn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          playerId,
+          slotNumber: gameState.currentSlot,
+          gameId: "B8",
+          choice,
+        }),
+      });
 
-        // Guard: only advance if no one else already did
-        if (liveIndex !== currentTurnIndex) return;
-
-        const playerDoc = await getDoc(doc(db, "players", playerId));
-        const playerData = playerDoc.data();
-        const choice = currentSubmission;
-
-        const newFeed = [
-          ...(liveGsc.publicFeed || []),
-          {
-            playerId,
-            playerName: playerData?.name || playerId,
-            choice,
-          }
-        ];
-
-        const nextIndex = liveIndex + 1;
-        const isFinished = nextIndex >= queue.length;
-
-        await updateDoc(gameStateRef, {
-          "gameSpecificConfig.publicFeed": newFeed,
-          "gameSpecificConfig.currentTurnIndex": nextIndex,
-          ...(isFinished ? { phase: "locked" } : {}),
-        });
-      } catch (e) {
-        advancedRef.current = false; // allow retry if failed
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.error === "Not your turn" || data.error === "Cascade already finished") {
+          // Not an error — just stale state, let the UI update naturally
+          return;
+        }
+        throw new Error(data.error || "Failed to advance turn");
       }
-    };
 
-    advance();
-  }, [isMyTurn, currentSubmission, currentTurnIndex, playerId, queue]);
+      // onSubmit notifies the parent component
+      onSubmit(choice);
+    } catch (e: any) {
+      setServerError(e.message);
+      console.error("B8 advance turn error:", e);
+    } finally {
+      setAdvancing(false);
+    }
+  }, [advancing, playerId, gameState?.currentSlot, onSubmit]);
 
-  // Reset advance guard when turn changes
+  // Auto-submit when time runs out
   useEffect(() => {
-    advancedRef.current = false;
+    if (timeLeft === 0 && isMyTurn && currentSubmission === null && mySignal && !advancing) {
+      autoSubmitRef.current = setTimeout(() => {
+        advanceTurn(mySignal as "RED" | "BLUE");
+      }, 500);
+    }
+    return () => {
+      if (autoSubmitRef.current) clearTimeout(autoSubmitRef.current);
+    };
+  }, [timeLeft, isMyTurn, currentSubmission, mySignal, advancing, advanceTurn]);
+
+  // Reset error when turn changes
+  useEffect(() => {
+    setServerError(null);
+    setShowConfirm(null);
   }, [currentTurnIndex]);
 
   // ── REVEAL ──
@@ -219,6 +215,9 @@ export default function GameB8({ onSubmit, isLocked, currentSubmission, results,
             <p className="text-center text-sm uppercase tracking-widest text-secondary font-bold animate-pulse">
               ▶ It is your turn — choose now
             </p>
+            {serverError && (
+              <p className="text-primary text-xs text-center animate-pulse">{serverError}</p>
+            )}
             {timeLeft !== null && (
               <div className={`text-center text-xs uppercase tracking-widest border p-2 ${timeLeft <= 5 ? "text-primary border-primary/40 bg-primary/5 animate-pulse" : "text-textMuted border-border"}`}>
                 {timeLeft}s — auto-submits your signal if time runs out
@@ -227,13 +226,15 @@ export default function GameB8({ onSubmit, isLocked, currentSubmission, results,
             <div className="flex gap-4">
               <button
                 onClick={() => setShowConfirm("RED")}
-                className="flex-1 bg-primary/20 border-2 border-primary text-primary hover:bg-primary hover:text-white py-8 text-2xl tracking-widest font-bold transition-all shadow-[0_0_20px_rgba(255,0,0,0.2)]"
+                disabled={advancing}
+                className="flex-1 bg-primary/20 border-2 border-primary text-primary hover:bg-primary hover:text-white py-8 text-2xl tracking-widest font-bold transition-all shadow-[0_0_20px_rgba(255,0,0,0.2)] disabled:opacity-40"
               >
                 RED
               </button>
               <button
                 onClick={() => setShowConfirm("BLUE")}
-                className="flex-1 bg-blue-500/20 border-2 border-blue-500 text-blue-400 hover:bg-blue-500 hover:text-white py-8 text-2xl tracking-widest font-bold transition-all shadow-[0_0_20px_rgba(59,130,246,0.2)]"
+                disabled={advancing}
+                className="flex-1 bg-blue-500/20 border-2 border-blue-500 text-blue-400 hover:bg-blue-500 hover:text-white py-8 text-2xl tracking-widest font-bold transition-all shadow-[0_0_20px_rgba(59,130,246,0.2)] disabled:opacity-40"
               >
                 BLUE
               </button>
@@ -271,7 +272,7 @@ export default function GameB8({ onSubmit, isLocked, currentSubmission, results,
                   className="flex-1 border border-border bg-background py-3 uppercase tracking-widest text-xs hover:bg-border transition">
                   Change
                 </button>
-                <button onClick={() => { onSubmit(showConfirm); setShowConfirm(null); }}
+                <button onClick={() => { setShowConfirm(null); advanceTurn(showConfirm); }}
                   className={`flex-1 text-white py-3 uppercase tracking-widest text-xs font-bold transition ${showConfirm === "RED" ? "bg-primary hover:bg-primary/80" : "bg-blue-500 hover:bg-blue-500/80"}`}>
                   Confirm
                 </button>

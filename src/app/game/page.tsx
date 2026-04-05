@@ -105,11 +105,13 @@ export default function GameUI() {
   }
 
   const currentSlotConfig = eventConfig.slots.find(s => s.slotNumber === gameState.currentSlot);
-  // Remove early return. We will use gameState fallbacks instead.
 
   const handleSubmission = async (val: any) => {
     if (!user) return;
-    await submitGameInput(user.uid, player.name, gameState.currentSlot, activeGameId, val);
+    const result = await submitGameInput(user.uid, player.name, gameState.currentSlot, activeGameId, val);
+    if (!result.success && !result.duplicate) {
+      console.warn("Submission failed:", result.error);
+    }
   };
 
   const isLocked = ["locked", "locked_a", "locked_b", "calculating", "reveal", "confirm"].includes(gameState.phase);

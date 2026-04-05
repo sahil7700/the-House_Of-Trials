@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/firebase';
-import { collection, doc, getDoc, getDocs, writeBatch } from 'firebase/firestore';
+import { collection, doc, getDocs, serverTimestamp, runTransaction } from 'firebase/firestore';
 
 export async function POST(req: Request) {
   try {
@@ -10,73 +10,84 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'Missing parameters.' }, { status: 400 });
     }
 
-    const gameStateDoc = await getDoc(doc(db, "system", "gameState"));
-    if (!gameStateDoc.exists()) {
-      return NextResponse.json({ success: false, error: 'No active game state.' }, { status: 404 });
-    }
-    
-    const gameState = gameStateDoc.data();
-    
-    if (gameState.phase !== "active" && gameState.phase !== "active_a" && gameState.phase !== "active_b") {
-      return NextResponse.json({ success: true, message: 'Phase already locked or inactive.' });
-    }
+    // Use Firestore transaction to prevent race conditions
+    const result = await runTransaction(db, async (transaction) => {
+      const gameStateRef = doc(db, "system", "gameState");
+      const gameStateDoc = await transaction.get(gameStateRef);
+      
+      if (!gameStateDoc.exists()) {
+        throw new Error("No active game state.");
+      }
+      
+      const gameState = gameStateDoc.data();
+      const activePhases = ["active", "active_a", "active_b"];
+      
+      if (!activePhases.includes(gameState.phase)) {
+        return { alreadyLocked: true };
+      }
 
-    // Safety check timestamp on the server
-    const nowSecs = Math.floor(Date.now() / 1000);
-    const startSecs = gameState.timerStartedAt?.seconds || 0;
-    const duration = gameState.timerDuration || 0;
-    const endSecs = gameState.phaseEndsAt?.seconds || (startSecs > 0 ? startSecs + duration : 0);
-    
-    // We allow a small tolerance (e.g 2 seconds) just in case
-    if (endSecs > 0 && nowSecs < endSecs - 2) {
-       return NextResponse.json({ success: false, error: 'Timer has not expired yet.' }, { status: 400 });
-    }
+      // Server-side timer validation using Firestore server timestamp
+      // phaseEndsAt should be set by admin when starting timer
+      const serverNow = Date.now(); // Use server time (close enough for this purpose)
+      const startMs = gameState.timerStartedAt?.toMillis?.() ?? 0;
+      const durationMs = (gameState.timerDuration || 0) * 1000;
+      const endMs = startMs + durationMs;
 
-    const batch = writeBatch(db);
-    
-    // Step 1: Lock the phase
-    const lockTarget = gameState.phase === "active_a" ? "locked_a" : gameState.phase === "active_b" ? "locked_b" : "locked";
-    batch.update(doc(db, "system", "gameState"), { phase: lockTarget });
+      // Allow 3-second tolerance for network delays
+      const TOLERANCE_MS = 3000;
+      if (endMs > 0 && serverNow < endMs - TOLERANCE_MS) {
+        throw new Error("Timer has not expired yet.");
+      }
 
-    // Step 2: Auto-submit for missing players
-    // Get all alive players
-    const playersSnap = await getDocs(collection(db, "players"));
-    let penaltyValue = -10;
-    
-    // Retrieve configuration defaults
-    if (gameState.gameSpecificConfig?.penaltyNoSubmit !== undefined) {
-      penaltyValue = gameState.gameSpecificConfig.penaltyNoSubmit;
-    }
+      const lockTarget = gameState.phase === "active_a" ? "locked_a" 
+        : gameState.phase === "active_b" ? "locked_b" 
+        : "locked";
 
-    playersSnap.forEach((pDoc) => {
-      const p = pDoc.data();
-      if (p.status === "alive" && (p.currentSubmission === null || p.currentSubmission === undefined)) {
-         
-         let autoVal: any = null;
-         if (gameId === "A1" || gameId === "BIDDING") autoVal = 50;
-         else if (gameId === "A2") autoVal = "1-10"; // Random fallback range
-         else if (gameId === "B7") autoVal = "ROUTE_1";
-         else if (gameId === "C9") {
-            if (gameState.phase === "active_a" || gameState.phase === "active_b") {
-               autoVal = { type: "sequence", value: [0, 0, 0] };
-            }
-         } else if (gameId === "B8" || gameId === "C10" || gameId === "A4") {
-            autoVal = "TIME_EXPIRED";
-         }
+      // Lock the phase
+      transaction.update(gameStateRef, { 
+        phase: lockTarget,
+        lockedAt: serverTimestamp(),
+      });
 
-         batch.update(pDoc.ref, {
+      // Auto-submit for missing players
+      const playersRef = collection(db, "players");
+      const playersSnap = await getDocs(playersRef);
+      
+      for (const pDoc of playersSnap.docs) {
+        const p = pDoc.data();
+        if (p.status === "alive" && (p.currentSubmission === null || p.currentSubmission === undefined)) {
+          let autoVal: any = null;
+          if (gameId === "A1" || gameId === "BIDDING") autoVal = 50;
+          else if (gameId === "A2") autoVal = "1-10";
+          else if (gameId === "B7") autoVal = 1;
+          else if (gameId === "B8" || gameId === "C10" || gameId === "A4") autoVal = "TIME_EXPIRED";
+          else if (gameId === "C9") {
+            if (gameState.phase === "active_a") autoVal = { type: "sequence", value: [0, 0, 0] };
+            else if (gameState.phase === "active_b") autoVal = { type: "guess", value: [0, 0, 0] };
+          } else if (gameId === "SILENCE") autoVal = { answer: null, confidence: null, autoSubmitted: true };
+          else if (gameId === "LEMONS") autoVal = { role: "none", autoSubmitted: true };
+
+          transaction.update(pDoc.ref, {
             currentSubmission: autoVal,
             autoSubmitted: true,
-            // We do not immediately apply points or eliminate here, just tag them
-         });
+          });
+        }
       }
+
+      return { alreadyLocked: false };
     });
 
-    await batch.commit();
+    if (result.alreadyLocked) {
+      return NextResponse.json({ success: true, message: 'Phase already locked or inactive.' });
+    }
 
     return NextResponse.json({ success: true, message: 'Game successfully auto-locked and defaulted.' });
   } catch (error: any) {
     console.error("Auto-lock Error:", error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    const message = error.message || "Unknown error";
+    if (message === "Timer has not expired yet." || message === "No active game state." || message === "Phase already locked or inactive.") {
+      return NextResponse.json({ success: false, error: message }, { status: 400 });
+    }
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

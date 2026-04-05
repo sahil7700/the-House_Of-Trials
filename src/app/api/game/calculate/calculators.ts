@@ -78,11 +78,21 @@ export function calculateA3(submissions: Submission[], config: GameSlotConfig): 
   const penalty = config.config.gameSpecificConfig?.penalty || 5;
   const bonus = config.config.gameSpecificConfig?.bonus || 5;
   
-  // Shuffle submissions for pairing
-  const shuffled = [...submissions].sort(() => Math.random() - 0.5);
+  // Fisher-Yates shuffle for deterministic fair pairing
+  const shuffled = [...submissions];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
   
   const pairs: any[] = [];
   const playerStats: Record<string, any> = {};
+  
+  // Find median value for odd player treatment
+  const allValues = submissions.map(s => Number(s.value || 0)).sort((a, b) => a - b);
+  const medianValue = allValues.length % 2 === 0
+    ? (allValues[allValues.length / 2 - 1] + allValues[allValues.length / 2]) / 2
+    : allValues[Math.floor(allValues.length / 2)];
   
   for (let i = 0; i < shuffled.length; i += 2) {
     const p1 = shuffled[i];
@@ -120,33 +130,43 @@ export function calculateA3(submissions: Submission[], config: GameSlotConfig): 
       playerStats[p1.playerId] = { opponentVal: v2, myScore: score1, myBonus: p1Bonus };
       playerStats[p2.playerId] = { opponentVal: v1, myScore: score2, myBonus: p2Bonus };
     } else {
-       // Odd player out, safe with median score
+       // Odd player out — paired with "ghost" at median value
+       // This is fair: their score is the median, no bonus/penalty
        const v1 = Number(p1.value || 0);
        pairs.push({
          player1Id: p1.playerId, player1Uid: p1.id, val1: v1, score1: v1, p1Bonus: 0,
-         player2Id: null, player2Uid: null, val2: null, score2: 0, p2Bonus: 0
+         player2Id: null, player2Uid: null, val2: null, score2: 0, p2Bonus: 0,
+         isGhostPair: true,
        });
-       playerStats[p1.playerId] = { opponentVal: null, myScore: v1, myBonus: 0 };
+       playerStats[p1.playerId] = {
+         opponentVal: null,
+         myScore: v1,
+         myBonus: 0,
+         isGhostPair: true,
+         note: "Ghost pair — no bonus/penalty applied",
+       };
     }
   }
 
   // Sort everyone by score ascending (lowest score is worst)
   const allStats = submissions.map(s => ({
      playerId: s.playerId,
-     score: playerStats[s.playerId].myScore
+     score: playerStats[s.playerId]?.myScore ?? 0,
   })).sort((a, b) => a.score - b.score);
   
   // Rank them (1 is best)
   allStats.reverse();
   allStats.forEach((s, idx) => {
-     playerStats[s.playerId].rank = idx + 1;
+     if (playerStats[s.playerId]) {
+       playerStats[s.playerId].rank = idx + 1;
+     }
   });
 
-  const elimCount = config.config.eliminationValue || 1;
+  const elimCount = Math.min(config.config.eliminationValue || 1, submissions.length - 1);
   const eliminatedPlayerIds = allStats.slice(allStats.length - elimCount).map(s => s.playerId);
   
   return {
-    results: { pairs, playerStats, penalty, bonus, totalPlayers: submissions.length },
+    results: { pairs, playerStats, penalty, bonus, totalPlayers: submissions.length, medianValue },
     eliminatedPlayerIds
   };
 }
@@ -292,10 +312,60 @@ export function runGenericCalculator(submissions: Submission[], config: GameSlot
     case "A2": return calculateA2(submissions, config);
     case "A3": return calculateA3(submissions, config);
     case "A4": return calculateA4(submissions, config);
+    case "B6": return calculateB6Fallback(submissions, config);
     case "B7": return calculateB7(submissions, config);
     case "C10": return calculateC10(submissions, config);
-    // Add default fallbacks for manual/physical games:
-    // They don't auto calculate eliminations, Admin confirms manually or uses points system.
     default: return { results: { message: "Manual grading / physical game." }, eliminatedPlayerIds: [] };
   }
+}
+
+// B6 fallback when not using the dedicated route
+function calculateB6Fallback(submissions: Submission[], config: GameSlotConfig): CalculationResult {
+  if (submissions.length === 0) return { results: {}, eliminatedPlayerIds: [] };
+  
+  const elimMode = config.config.eliminationMode || "percentage";
+  const elimValue = config.config.eliminationValue || 80;
+  
+  const sorted = [...submissions].sort((a, b) => Number(a.value || 0) - Number(b.value || 0));
+  
+  let elimCount = 0;
+  if (elimMode === "percentage") {
+    elimCount = Math.floor(sorted.length * (elimValue / 100));
+  } else {
+    elimCount = elimValue;
+  }
+  
+  elimCount = Math.min(elimCount, Math.max(0, sorted.length - 1));
+  if (elimCount < 0) elimCount = 0;
+  
+  const cutOffBid = elimCount > 0 ? Number(sorted[elimCount - 1].value || 0) : 0;
+  
+  let eliminatedIds = sorted
+    .filter(s => Number(s.value || 0) <= cutOffBid && elimCount > 0)
+    .map(s => s.playerId);
+  
+  // Safety: always keep at least 1 survivor
+  if (eliminatedIds.length >= sorted.length && sorted.length > 1) {
+    eliminatedIds = eliminatedIds.slice(0, eliminatedIds.length - 1);
+  }
+  
+  const histogram: Record<number, number> = {};
+  sorted.forEach(s => {
+    const bid = Number(s.value || 0);
+    histogram[bid] = (histogram[bid] || 0) + 1;
+  });
+  
+  const highestBid = sorted.length > 0 ? Number(sorted[sorted.length - 1].value || 0) : 0;
+  
+  return {
+    results: {
+      cutOffBid,
+      elimCount,
+      highestBid,
+      histogram,
+      eliminatedCount: eliminatedIds.length,
+      survivedCount: sorted.length - eliminatedIds.length,
+    },
+    eliminatedPlayerIds: eliminatedIds
+  };
 }

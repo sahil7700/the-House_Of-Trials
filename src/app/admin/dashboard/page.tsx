@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { subscribeToGameState, subscribeToEventConfig, GameState, EventConfig, GamePhase, GameSlotConfig } from "@/lib/services/game-service";
-import { updateGameState, startTimer, confirmEliminations, emergencyPauseToggle, finalizeRoundResults, PlayerRoundUpdate, resetToSlotOne } from "@/lib/services/admin-service";
-import { collection, onSnapshot, query, doc, writeBatch, getDocs, updateDoc } from "firebase/firestore";
+import { updateGameState, startTimer, emergencyPauseToggle, finalizeRoundResults, PlayerRoundUpdate, resetToSlotOne } from "@/lib/services/admin-service";
+import { collection, onSnapshot, query, where, doc, writeBatch, getDocs, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { PlayerData } from "@/lib/services/player-service";
 import AdminGameStats from "./components/AdminGameStats";
@@ -109,17 +109,24 @@ export default function AdminDashboard() {
     };
   }, [user, authLoading, router]);
 
-  // Auto-lock when all alive players have submitted
+  // Auto-lock when all alive players have submitted (with debounce to prevent rapid toggling)
+  const autoLockFiredForSlot = useRef<number>(-1);
   useEffect(() => {
     if (!gameState) return;
     const isAct = gameState.phase === "active" || gameState.phase === "active_a" || gameState.phase === "active_b";
     if (!isAct) return;
+    
+    // Guard: only fire once per slot
+    if (autoLockFiredForSlot.current === gameState.currentSlot) return;
+    
     const totalAlive = players.filter(p => p.status === "alive").length;
     const submitted = players.filter(p => p.currentSubmission !== null && p.status === "alive").length;
     if (totalAlive > 0 && submitted >= totalAlive) {
-      if (gameState.phase === "active") updateGameState({ phase: "locked" });
-      if (gameState.phase === "active_a") updateGameState({ phase: "locked_a" });
-      if (gameState.phase === "active_b") updateGameState({ phase: "locked_b" });
+      autoLockFiredForSlot.current = gameState.currentSlot;
+      const newPhase = gameState.phase === "active" ? "locked"
+        : gameState.phase === "active_a" ? "locked_a"
+        : "locked_b";
+      updateGameState({ phase: newPhase as GamePhase });
     }
   }, [players, gameState]);
 
@@ -328,10 +335,18 @@ export default function AdminDashboard() {
       return;
     }
 
+    // Validate: prevent eliminating all players
+    const elimCount = updates.filter(u => u.status === "eliminated").length;
+    const aliveCount = updates.filter(u => u.status === "alive").length;
+    if (aliveCount === 0 && elimCount > 0) {
+      alert("WARNING: You are about to eliminate ALL remaining players. This will end the game. Are you sure?");
+      if (!confirm("FINAL WARNING: Eliminate all players and end the event?")) return;
+    }
+
     const isFinal = gameState.roundType === "final";
     const msg = isFinal 
       ? "CRITICAL: This is the FINAL ROUND. Finalizing will declare the winner and conclude the tournament. Continue?"
-      : `Finalize round and apply points/eliminations for ${updates.length} players?`;
+      : `Finalize round and apply points/eliminations for ${updates.length} players? (${aliveCount} survive, ${elimCount} eliminated)`;
 
     if (confirm(msg)) {
       setCalculating(true);
@@ -390,6 +405,21 @@ export default function AdminDashboard() {
     }
   };
 
+  const setWildCardLimit = async (limit: number) => {
+    // Bulk update: set totalRevivals on all players
+    try {
+      const aliveSnap = await getDocs(query(collection(db, "players"), where("status", "==", "alive")));
+      const batch = writeBatch(db);
+      aliveSnap.docs.forEach(d => {
+        batch.update(d.ref, { totalRevivals: limit });
+      });
+      await batch.commit();
+      alert(`Wild card limit set to ${limit} per player.`);
+    } catch (e: any) {
+      alert("Error setting wild card limit: " + e.message);
+    }
+  };
+
   const updatePoints = (uid: string, delta: number) => {
     setPendingUpdates(prev => ({
       ...prev,
@@ -401,9 +431,33 @@ export default function AdminDashboard() {
   };
 
   const startDynamicRound = async () => {
-    if (!nextGameTitle) {
+    if (!nextGameTitle || !nextGameTitle.trim()) {
       alert("Please enter a title for the round.");
       return;
+    }
+    
+    // Validate timer duration
+    if (nextGameTimer < 5) { alert("Timer must be at least 5 seconds."); return; }
+    if (nextGameTimer > 600) { alert("Timer cannot exceed 600 seconds (10 minutes)."); return; }
+
+    // Validate game-specific configs
+    if (nextGameId === "A1") {
+      if (nextA1Multiplier <= 0 || nextA1Multiplier > 2) {
+        alert("A1 multiplier must be between 0 and 2."); return;
+      }
+    }
+    if (nextGameId === "B7") {
+      if (!nextB7Threshold || nextB7Threshold < 2) {
+        alert("B7 threshold must be at least 2."); return;
+      }
+      if (nextB7Threshold > totalAlive) {
+        alert(`B7 threshold (${nextB7Threshold}) cannot exceed alive players (${totalAlive}).`); return;
+      }
+    }
+    if (nextGameId === "C10") {
+      if (nextC10Sequence.length !== 20) {
+        alert("C10: Generate a 20-number sequence first."); return;
+      }
     }
     
     setCalculating(true);
@@ -411,7 +465,6 @@ export default function AdminDashboard() {
       const newHistory = { ...(gameState?.gameHistory || {}) };
       newHistory[nextGameId] = (newHistory[nextGameId] || 0) + 1;
 
-      // Build game-specific config
       let gsc: any = {};
       if (nextGameId === "A1") {
         gsc = { multiplier: nextA1Multiplier };
@@ -420,16 +473,16 @@ export default function AdminDashboard() {
         gsc = { penalty: nextA3Penalty, bonus: nextA3Bonus };
       }
       if (nextGameId === "B7") {
-        if (!nextB7Threshold || nextB7Threshold < 1) { alert("B7: Please set a valid threshold."); setCalculating(false); return; }
         gsc = { threshold: nextB7Threshold, fixedRouteTime: nextB7FixedTime, revealStep: 0 };
       }
       if (nextGameId === "C10") {
-        if (nextC10Sequence.length !== 20) { alert("C10: Generate a 20-number sequence first."); setCalculating(false); return; }
         gsc = { numberSequence: nextC10Sequence, currentNumberIndex: 0 };
       }
 
-      // NEW: Update eventConfig if this slot doesn't exist or is different
-      const currentSlots = [...(eventConfig?.slots || [])];
+      // ✅ Always read slots FRESH from Firestore to avoid stale state after End Event
+      const freshConfigSnap = await getDocs(query(collection(db, "system")));
+      const freshEventConfig = freshConfigSnap.docs.find(d => d.id === "eventConfig")?.data();
+      const currentSlots = [...((freshEventConfig?.slots as GameSlotConfig[]) || [])];
       const slotIndex = currentSlots.findIndex(s => s.slotNumber === gameState.currentSlot);
       
       const slotData: any = {
@@ -524,7 +577,7 @@ export default function AdminDashboard() {
 
   const handleEndEvent = async () => {
     const confirmed = confirm(
-      "⚠️ END EVENT — This will permanently delete ALL players, submissions, and game data, and reset to 0 slots. This cannot be undone.\n\nType OK to confirm."
+      "⚠️ END EVENT — This will permanently delete ALL players, submissions, and game data, and reset to 0 slots. This cannot be undone.\n\nConfirm to proceed."
     );
     if (!confirmed) return;
 
@@ -549,7 +602,7 @@ export default function AdminDashboard() {
       mtSnap.docs.forEach(d => b3.delete(d.ref));
       await b3.commit();
 
-      // 4. Reset system docs — clean slate, 0 slots, slot 1 ready
+      // 4. Reset system docs — clean slate, 0 slots, slot 1 lobby
       const b4 = writeBatch(db);
       b4.set(doc(db, "system", "eventConfig"), {
         eventName: "New Event",
@@ -579,7 +632,9 @@ export default function AdminDashboard() {
       });
       await b4.commit();
 
-      alert("✅ Event ended. Database cleared. You can now create slots and start a new event.");
+      // ✅ Force full page reload so ALL local React state (slots, gameState, etc.) is wiped clean
+      alert("✅ Event ended. Database cleared. Page will reload — you can now start a new event.");
+      window.location.reload();
     } catch (e: any) {
       alert("Error ending event: " + e.message);
     }

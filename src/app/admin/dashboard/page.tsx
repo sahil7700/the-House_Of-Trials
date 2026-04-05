@@ -663,6 +663,12 @@ export default function AdminDashboard() {
 
         <div className="flex gap-2">
           <button
+            onClick={() => router.push("/admin/builder")}
+            className="bg-surface border border-secondary/40 text-secondary/70 hover:border-secondary hover:text-secondary px-4 py-2 uppercase text-xs transition-colors"
+          >
+            ◈ Builder
+          </button>
+          <button
             onClick={() => updateGameState({ wildEntryOpen: !gameState.wildEntryOpen })}
             className={`${gameState.wildEntryOpen ? 'bg-secondary text-background font-bold shadow-glow-gold' : 'bg-secondary/20 hover:bg-secondary/40 text-secondary'} border border-secondary px-4 py-2 uppercase text-xs transition-colors`}
           >
@@ -681,7 +687,7 @@ export default function AdminDashboard() {
             {gameState.emergencyPause ? "RESUME EVENT" : "EMERGENCY PAUSE"}
           </button>
           <button
-            onClick={handleEndEvent}
+            onClick={() => router.push("/admin/builder")}
             className="bg-red-900/40 border border-red-700 text-red-400 hover:bg-red-800 hover:text-white px-4 py-2 uppercase text-xs font-bold transition-colors ml-4"
           >
             ✕ END EVENT

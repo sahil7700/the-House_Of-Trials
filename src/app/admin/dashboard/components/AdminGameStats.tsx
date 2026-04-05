@@ -207,8 +207,11 @@ export default function AdminGameStats({ gameState, players, onUpdateGameState, 
       onUpdateGameState({ gameSpecificConfig: { ...gsc, currentNumberIndex: currentIndex + 1 } } as any);
     };
 
-    const claimLeaderboard = [...claimedPlayers]
-      .sort((a, b) => Number(b.currentSubmission || 0) - Number(a.currentSubmission || 0));
+    const claimLeaderboard = [...claimedPlayers].sort((a, b) => {
+      const valA = Number(typeof a.currentSubmission === "object" && a.currentSubmission !== null ? a.currentSubmission.value : (a.currentSubmission || 0));
+      const valB = Number(typeof b.currentSubmission === "object" && b.currentSubmission !== null ? b.currentSubmission.value : (b.currentSubmission || 0));
+      return valB - valA;
+    });
 
     return (
       <div className="w-full space-y-6">
@@ -264,13 +267,16 @@ export default function AdminGameStats({ gameState, players, onUpdateGameState, 
           <div className="border border-border bg-surface p-4">
             <p className="text-[10px] uppercase tracking-widest text-textMuted mb-3">Live Claim Leaderboard</p>
             <div className="space-y-1 max-h-48 overflow-auto">
-              {claimLeaderboard.map((p, rank) => (
-                <div key={p.id} className="flex justify-between items-center text-xs font-mono p-2 border-b border-border/50">
-                  <span className="text-textMuted">#{rank + 1}</span>
-                  <span className="text-textDefault truncate max-w-[100px]">{p.name}</span>
-                  <span className={`font-bold ${Number(p.currentSubmission) >= 70 ? 'text-secondary' : 'text-textDefault'}`}>{p.currentSubmission}</span>
-                </div>
-              ))}
+              {claimLeaderboard.map((p, rank) => {
+                const claimedVal = typeof p.currentSubmission === "object" && p.currentSubmission !== null ? p.currentSubmission.value : p.currentSubmission;
+                return (
+                  <div key={p.id} className="flex justify-between items-center text-xs font-mono p-2 border-b border-border/50">
+                    <span className="text-textMuted">#{rank + 1}</span>
+                    <span className="text-textDefault truncate max-w-[100px]">{p.name}</span>
+                    <span className={`font-bold ${Number(claimedVal) >= 70 ? 'text-secondary' : 'text-textDefault'}`}>{claimedVal}</span>
+                  </div>
+                );
+              })}
             </div>
             {unclaimedCount > 0 && (
               <p className="text-[10px] text-textMuted/60 mt-2 uppercase tracking-widest">{unclaimedCount} players still waiting...</p>

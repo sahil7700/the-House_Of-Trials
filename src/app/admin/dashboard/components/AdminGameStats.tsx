@@ -1,5 +1,8 @@
 import { GameState } from "@/lib/services/game-service";
 import { PlayerData } from "@/lib/services/player-service";
+import GameB6Admin from "./GameB6Admin";
+import GameB8Admin from "./GameB8Admin";
+import GameC9Admin from "./GameC9Admin";
 
 interface Props {
   gameState: GameState;
@@ -279,6 +282,18 @@ export default function AdminGameStats({ gameState, players, onUpdateGameState, 
         )}
       </div>
     );
+  }
+
+  if (targetGameId === "B6") {
+    return <GameB6Admin gameState={gameState} players={players} onUpdateGameState={onUpdateGameState} />;
+  }
+
+  if (targetGameId === "B8") {
+    return <GameB8Admin gameState={gameState} players={players} onUpdateGameState={onUpdateGameState} />;
+  }
+
+  if (targetGameId === "C9") {
+    return <GameC9Admin gameState={gameState} players={players} onUpdateGameState={onUpdateGameState} />;
   }
 
   return null;

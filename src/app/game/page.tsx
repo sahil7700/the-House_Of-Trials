@@ -14,7 +14,10 @@ import GameA1 from "./components/GameA1";
 import GameA2 from "./components/GameA2";
 import GameA3 from "./components/GameA3";
 import GameA4 from "./components/GameA4";
+import GameB6 from "./components/GameB6";
 import GameB7 from "./components/GameB7";
+import GameB8 from "./components/GameB8";
+import GameC9 from "./components/GameC9";
 import GameC10 from "./components/GameC10";
 import OfflineGame from "./components/OfflineGame";
 
@@ -64,7 +67,7 @@ export default function GameUI() {
   }, [gameState?.phase, player?.status, router]);
 
   useEffect(() => {
-    if (!gameState || gameState.phase !== "active" || !gameState.timerStartedAt) {
+    if (!gameState || !["active", "open_a", "open_b"].includes(gameState.phase) || !gameState.timerStartedAt) {
       setTimeLeft(null);
       return;
     }
@@ -96,7 +99,7 @@ export default function GameUI() {
     await submitGameInput(user.uid, player.name, gameState.currentSlot, activeGameId, val);
   };
 
-  const isLocked = gameState.phase === "locked" || gameState.phase === "calculating" || gameState.phase === "reveal" || gameState.phase === "confirm";
+  const isLocked = ["locked", "locked_a", "locked_b", "calculating", "reveal", "confirm"].includes(gameState.phase);
 
   // Use slot config's gameId as the authoritative game type when a pre-built slot is active.
   // For dynamic rounds (no slot config) fall back to gameState.currentGameId.
@@ -110,7 +113,9 @@ export default function GameUI() {
         results: gameState.phase === "reveal" || gameState.phase === "confirm" ? gameState.results : null,
         playerId: player.id,
         customOptions: gameState.customOptions,
-        gameSpecificConfig: (gameState as any).gameSpecificConfig
+        gameSpecificConfig: (gameState as any).gameSpecificConfig,
+        timeLeft,
+        gameState
      };
 
      switch (activeGameId) {
@@ -118,7 +123,10 @@ export default function GameUI() {
        case "A2": return <GameA2 {...commonProps} />;
        case "A3": return <GameA3 {...commonProps} />;
        case "A4": return <GameA4 {...commonProps} />;
+       case "B6": return <GameB6 {...commonProps} />;
        case "B7": return <GameB7 {...commonProps} />;
+       case "B8": return <GameB8 {...commonProps} />;
+       case "C9": return <GameC9 {...commonProps} />;
        case "C10": return <GameC10 {...commonProps} />;
        default: return <OfflineGame isLocked={isLocked} gameName={gameState?.currentRoundTitle || currentSlotConfig?.gameName || "Physical Trial"} />;
      }
@@ -136,7 +144,7 @@ export default function GameUI() {
           <span className="text-textDefault block truncate max-w-[150px]">{player.name}</span>
         </div>
 
-        {timeLeft !== null && gameState.phase === "active" && (
+        {timeLeft !== null && ["active", "open_a", "open_b"].includes(gameState.phase) && (
           <div className="text-center">
              <span className={`text-4xl font-bold font-mono tracking-widest ${timeLeft <= 5 ? "text-primary animate-pulse" : "text-textDefault"}`}>
                {timeLeft < 10 ? `0${timeLeft}` : timeLeft}
@@ -152,7 +160,7 @@ export default function GameUI() {
       </header>
 
       {/* Submission Progress Bar — visible during active phase */}
-      {gameState.phase === "active" && (
+      {["active", "open_a", "open_b"].includes(gameState.phase) && (
         <div className="relative z-10 mb-4">
           <div className="flex justify-between text-[10px] uppercase tracking-widest text-textMuted mb-1">
             <span>Submissions</span>
@@ -175,7 +183,7 @@ export default function GameUI() {
            </motion.div>
         )}
         
-        {gameState.phase === "reveal" && gameState.results?.eliminatedPlayerIds?.includes(player.id) && !["A1", "A2", "A3", "A4", "B7", "C10"].includes(activeGameId) && (
+        {gameState.phase === "reveal" && gameState.results?.eliminatedPlayerIds?.includes(player.id) && !["A1", "A2", "A3", "A4", "B6", "B7", "B8", "C9", "C10"].includes(activeGameId) && (
            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }} className="fixed inset-0 z-50 bg-[#0a0a0f] border-8 border-primary flex items-center justify-center p-8">
              <div className="text-center space-y-6">
                 <div className="text-primary text-6xl drop-shadow-glow-red animate-pulse">☠</div>
@@ -185,7 +193,7 @@ export default function GameUI() {
            </motion.div>
         )}
 
-        {gameState.phase === "reveal" && !gameState.results?.eliminatedPlayerIds?.includes(player.id) && player.status !== "eliminated" && !["A1", "A2", "A3", "A4", "B7", "C10"].includes(activeGameId) && (
+        {gameState.phase === "reveal" && !gameState.results?.eliminatedPlayerIds?.includes(player.id) && player.status !== "eliminated" && !["A1", "A2", "A3", "A4", "B6", "B7", "B8", "C9", "C10"].includes(activeGameId) && (
            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1.5 }} className="fixed inset-0 z-50 bg-secondary/10 flex items-center justify-center pointer-events-none">
              <div className="text-center text-secondary drop-shadow-glow-gold animate-pulse">
                 <h1 className="font-serif uppercase tracking-[0.2em] text-4xl">Survived</h1>

@@ -1,0 +1,551 @@
+{
+  "puzzle_01.png": {
+    "puzzle_number": 1,
+    "bottom_row": [
+      3,
+      5,
+      2,
+      4
+    ],
+    "rule_bottom_to_middle": "add",
+    "rule_middle_to_top": "multiply",
+    "all_rows": {
+      "row0": [
+        3,
+        5,
+        2,
+        4
+      ],
+      "row1": [
+        8,
+        7,
+        6
+      ],
+      "row2": [
+        56,
+        42
+      ],
+      "row3": [
+        2352
+      ]
+    },
+    "top_answer": 2352,
+    "hidden_cells_answers": {},
+    "full_solution": {
+      "row0_bottom": [
+        3,
+        5,
+        2,
+        4
+      ],
+      "row1_middle": [
+        8,
+        7,
+        6
+      ],
+      "row2_middle": [
+        56,
+        42
+      ],
+      "row3_top": [
+        2352
+      ]
+    }
+  },
+  "puzzle_02.png": {
+    "puzzle_number": 2,
+    "bottom_row": [
+      1,
+      10,
+      6,
+      3
+    ],
+    "rule_bottom_to_middle": "add",
+    "rule_middle_to_top": "add",
+    "all_rows": {
+      "row0": [
+        1,
+        10,
+        6,
+        3
+      ],
+      "row1": [
+        11,
+        16,
+        9
+      ],
+      "row2": [
+        27,
+        25
+      ],
+      "row3": [
+        52
+      ]
+    },
+    "top_answer": 52,
+    "hidden_cells_answers": {
+      "row0_col1": 10
+    },
+    "full_solution": {
+      "row0_bottom": [
+        1,
+        10,
+        6,
+        3
+      ],
+      "row1_middle": [
+        11,
+        16,
+        9
+      ],
+      "row2_middle": [
+        27,
+        25
+      ],
+      "row3_top": [
+        52
+      ]
+    }
+  },
+  "puzzle_03.png": {
+    "puzzle_number": 3,
+    "bottom_row": [
+      2,
+      3,
+      4,
+      1
+    ],
+    "rule_bottom_to_middle": "add",
+    "rule_middle_to_top": "multiply",
+    "all_rows": {
+      "row0": [
+        2,
+        3,
+        4,
+        1
+      ],
+      "row1": [
+        5,
+        7,
+        5
+      ],
+      "row2": [
+        35,
+        35
+      ],
+      "row3": [
+        1225
+      ]
+    },
+    "top_answer": 1225,
+    "hidden_cells_answers": {
+      "row0_col1": 3,
+      "row0_col2": 4
+    },
+    "full_solution": {
+      "row0_bottom": [
+        2,
+        3,
+        4,
+        1
+      ],
+      "row1_middle": [
+        5,
+        7,
+        5
+      ],
+      "row2_middle": [
+        35,
+        35
+      ],
+      "row3_top": [
+        1225
+      ]
+    }
+  },
+  "puzzle_04.png": {
+    "puzzle_number": 4,
+    "bottom_row": [
+      4,
+      2,
+      5,
+      3
+    ],
+    "rule_bottom_to_middle": "add",
+    "rule_middle_to_top": "add",
+    "all_rows": {
+      "row0": [
+        4,
+        2,
+        5,
+        3
+      ],
+      "row1": [
+        6,
+        7,
+        8
+      ],
+      "row2": [
+        13,
+        15
+      ],
+      "row3": [
+        28
+      ]
+    },
+    "top_answer": 28,
+    "hidden_cells_answers": {
+      "row0_col3": 3
+    },
+    "full_solution": {
+      "row0_bottom": [
+        4,
+        2,
+        5,
+        3
+      ],
+      "row1_middle": [
+        6,
+        7,
+        8
+      ],
+      "row2_middle": [
+        13,
+        15
+      ],
+      "row3_top": [
+        28
+      ]
+    }
+  },
+  "puzzle_05.png": {
+    "puzzle_number": 5,
+    "bottom_row": [
+      1,
+      6,
+      2,
+      5
+    ],
+    "rule_bottom_to_middle": "add",
+    "rule_middle_to_top": "multiply",
+    "all_rows": {
+      "row0": [
+        1,
+        6,
+        2,
+        5
+      ],
+      "row1": [
+        7,
+        8,
+        7
+      ],
+      "row2": [
+        56,
+        56
+      ],
+      "row3": [
+        3136
+      ]
+    },
+    "top_answer": 3136,
+    "hidden_cells_answers": {},
+    "full_solution": {
+      "row0_bottom": [
+        1,
+        6,
+        2,
+        5
+      ],
+      "row1_middle": [
+        7,
+        8,
+        7
+      ],
+      "row2_middle": [
+        56,
+        56
+      ],
+      "row3_top": [
+        3136
+      ]
+    }
+  },
+  "puzzle_06.png": {
+    "puzzle_number": 6,
+    "bottom_row": [
+      3,
+      4,
+      1,
+      6
+    ],
+    "rule_bottom_to_middle": "multiply",
+    "rule_middle_to_top": "add",
+    "all_rows": {
+      "row0": [
+        3,
+        4,
+        1,
+        6
+      ],
+      "row1": [
+        12,
+        4,
+        6
+      ],
+      "row2": [
+        16,
+        10
+      ],
+      "row3": [
+        26
+      ]
+    },
+    "top_answer": 26,
+    "hidden_cells_answers": {
+      "row0_col0": 3
+    },
+    "full_solution": {
+      "row0_bottom": [
+        3,
+        4,
+        1,
+        6
+      ],
+      "row1_middle": [
+        12,
+        4,
+        6
+      ],
+      "row2_middle": [
+        16,
+        10
+      ],
+      "row3_top": [
+        26
+      ]
+    }
+  },
+  "puzzle_07.png": {
+    "puzzle_number": 7,
+    "bottom_row": [
+      2,
+      7,
+      3,
+      2
+    ],
+    "rule_bottom_to_middle": "add",
+    "rule_middle_to_top": "add",
+    "all_rows": {
+      "row0": [
+        2,
+        7,
+        3,
+        2
+      ],
+      "row1": [
+        9,
+        10,
+        5
+      ],
+      "row2": [
+        19,
+        15
+      ],
+      "row3": [
+        34
+      ]
+    },
+    "top_answer": 34,
+    "hidden_cells_answers": {
+      "row0_col2": 3
+    },
+    "full_solution": {
+      "row0_bottom": [
+        2,
+        7,
+        3,
+        2
+      ],
+      "row1_middle": [
+        9,
+        10,
+        5
+      ],
+      "row2_middle": [
+        19,
+        15
+      ],
+      "row3_top": [
+        34
+      ]
+    }
+  },
+  "puzzle_08.png": {
+    "puzzle_number": 8,
+    "bottom_row": [
+      5,
+      1,
+      4,
+      3
+    ],
+    "rule_bottom_to_middle": "add",
+    "rule_middle_to_top": "multiply",
+    "all_rows": {
+      "row0": [
+        5,
+        1,
+        4,
+        3
+      ],
+      "row1": [
+        6,
+        5,
+        7
+      ],
+      "row2": [
+        30,
+        35
+      ],
+      "row3": [
+        1050
+      ]
+    },
+    "top_answer": 1050,
+    "hidden_cells_answers": {
+      "row0_col1": 1,
+      "row0_col3": 3
+    },
+    "full_solution": {
+      "row0_bottom": [
+        5,
+        1,
+        4,
+        3
+      ],
+      "row1_middle": [
+        6,
+        5,
+        7
+      ],
+      "row2_middle": [
+        30,
+        35
+      ],
+      "row3_top": [
+        1050
+      ]
+    }
+  },
+  "puzzle_09.png": {
+    "puzzle_number": 9,
+    "bottom_row": [
+      1,
+      3,
+      5,
+      2
+    ],
+    "rule_bottom_to_middle": "add",
+    "rule_middle_to_top": "add",
+    "all_rows": {
+      "row0": [
+        1,
+        3,
+        5,
+        2
+      ],
+      "row1": [
+        4,
+        8,
+        7
+      ],
+      "row2": [
+        12,
+        15
+      ],
+      "row3": [
+        27
+      ]
+    },
+    "top_answer": 27,
+    "hidden_cells_answers": {
+      "row0_col0": 1,
+      "row0_col3": 2
+    },
+    "full_solution": {
+      "row0_bottom": [
+        1,
+        3,
+        5,
+        2
+      ],
+      "row1_middle": [
+        4,
+        8,
+        7
+      ],
+      "row2_middle": [
+        12,
+        15
+      ],
+      "row3_top": [
+        27
+      ]
+    }
+  },
+  "puzzle_10.png": {
+    "puzzle_number": 10,
+    "bottom_row": [
+      6,
+      2,
+      3,
+      1
+    ],
+    "rule_bottom_to_middle": "add",
+    "rule_middle_to_top": "multiply",
+    "all_rows": {
+      "row0": [
+        6,
+        2,
+        3,
+        1
+      ],
+      "row1": [
+        8,
+        5,
+        4
+      ],
+      "row2": [
+        40,
+        20
+      ],
+      "row3": [
+        800
+      ]
+    },
+    "top_answer": 800,
+    "hidden_cells_answers": {
+      "row0_col1": 2
+    },
+    "full_solution": {
+      "row0_bottom": [
+        6,
+        2,
+        3,
+        1
+      ],
+      "row1_middle": [
+        8,
+        5,
+        4
+      ],
+      "row2_middle": [
+        40,
+        20
+      ],
+      "row3_top": [
+        800
+      ]
+    }
+  }
+}

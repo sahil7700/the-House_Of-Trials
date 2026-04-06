@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface GameB8Props {
@@ -14,8 +14,7 @@ interface GameB8Props {
 
 export default function GameB8({ onSubmit, isLocked, currentSubmission, results, playerId, timeLeft, gameState }: GameB8Props) {
   const [showConfirm, setShowConfirm] = useState<"RED" | "BLUE" | null>(null);
-  const [advancing, setAdvancing] = useState(false);
-  const [serverError, setServerError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
   const autoSubmitRef = useRef<NodeJS.Timeout | null>(null);
 
   const gsc = gameState?.gameSpecificConfig || {};
@@ -31,46 +30,36 @@ export default function GameB8({ onSubmit, isLocked, currentSubmission, results,
   const myTurnHasPassed = myQueueIndex !== -1 && myQueueIndex < currentTurnIndex;
   const inQueue = myQueueIndex !== -1;
 
-  // Standard submission — the Admin Dashboard will detect this and advance the cascade
-  const advanceTurn = useCallback(async (choice: "RED" | "BLUE") => {
-    if (advancing) return;
-    setAdvancing(true);
-    setServerError(null);
-
-    try {
-      if (!isMyTurn) throw new Error("Not your turn");
-      
-      // Submit securely to this player's document
-      await onSubmit(choice);
-      
-      // Client-side visual delay while the Admin Dashboard updates the queue
-      setTimeout(() => setAdvancing(false), 2000);
-
-    } catch (e: any) {
-      setServerError(e.message);
-      console.error("B8 advance turn error:", e);
-    } finally {
-      setAdvancing(false);
-    }
-  }, [advancing, playerId, gameState?.currentSlot, onSubmit]);
-
-  // Auto-submit when time runs out
+  // Reset submitted state when turn advances
   useEffect(() => {
-    if (timeLeft === 0 && isMyTurn && currentSubmission === null && mySignal && !advancing) {
+    if (isMyTurn) {
+      setSubmitted(false);
+    }
+  }, [currentTurnIndex]);
+
+  // Clear confirm on turn change
+  useEffect(() => {
+    setShowConfirm(null);
+  }, [currentTurnIndex]);
+
+  // Auto-submit signal when timer expires
+  useEffect(() => {
+    if (timeLeft === 0 && isMyTurn && !submitted && mySignal) {
       autoSubmitRef.current = setTimeout(() => {
-        advanceTurn(mySignal as "RED" | "BLUE");
+        onSubmit(mySignal);
+        setSubmitted(true);
       }, 500);
     }
     return () => {
       if (autoSubmitRef.current) clearTimeout(autoSubmitRef.current);
     };
-  }, [timeLeft, isMyTurn, currentSubmission, mySignal, advancing, advanceTurn]);
+  }, [timeLeft, isMyTurn, submitted, mySignal, onSubmit]);
 
-  // Reset error when turn changes
-  useEffect(() => {
-    setServerError(null);
-    setShowConfirm(null);
-  }, [currentTurnIndex]);
+  const handleChoice = (choice: "RED" | "BLUE") => {
+    if (!isMyTurn || submitted || gameState?.phase !== "active") return;
+    onSubmit(choice);
+    setSubmitted(true);
+  };
 
   // ── REVEAL ──
   if (gameState?.phase === "reveal" && results) {
@@ -88,7 +77,9 @@ export default function GameB8({ onSubmit, isLocked, currentSubmission, results,
         </div>
 
         <motion.div
-          initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.5 }}
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ delay: 0.5 }}
           className={`w-full p-8 border-2 text-center space-y-3 ${isEliminated ? "border-primary bg-primary/10" : "border-secondary bg-secondary/10"}`}
         >
           <p className={`text-4xl font-serif uppercase tracking-widest ${isEliminated ? "text-primary animate-pulse" : "text-secondary"}`}>
@@ -102,26 +93,35 @@ export default function GameB8({ onSubmit, isLocked, currentSubmission, results,
     );
   }
 
-  // ── LOBBY / NOT IN QUEUE ──
-  if (gameState?.phase === "lobby" || !inQueue) {
+  // ── LOBBY ──
+  if (gameState?.phase === "lobby") {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4 font-mono text-center">
         <div className="w-8 h-8 border-2 border-secondary border-t-transparent rounded-full animate-spin" />
         <p className="text-textMuted uppercase tracking-widest text-sm">Awaiting cascade setup...</p>
-        {!inQueue && gameState?.phase === "active" && (
-          <p className="text-[10px] text-primary uppercase tracking-widest">You are not in the active cascade queue.</p>
-        )}
       </div>
     );
   }
 
+  // ── NOT IN QUEUE ──
+  if (!inQueue) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4 font-mono text-center">
+        <div className="w-8 h-8 border-2 border-secondary border-t-transparent rounded-full animate-spin" />
+        <p className="text-textMuted uppercase tracking-widest text-sm">Cascade is in progress...</p>
+        <p className="text-[10px] text-primary uppercase tracking-widest">You are not in this cascade round.</p>
+      </div>
+    );
+  }
+
+  // ── MAIN GAME ──
   return (
     <div className="w-full max-w-md mx-auto space-y-6 mt-4 pb-12 font-mono">
       {/* Header */}
       <div className="text-center space-y-2 mb-6">
         <p className="text-secondary text-sm uppercase tracking-widest font-bold">Information Cascade</p>
         <p className="text-xs text-textMuted leading-relaxed px-4">
-          Trust your private signal — or follow the crowd. Choose which color is the <em>majority signal</em> of all players.
+          Trust your private signal — or follow the crowd. Choose which color is the <em>majority signal</em>.
         </p>
       </div>
 
@@ -142,8 +142,12 @@ export default function GameB8({ onSubmit, isLocked, currentSubmission, results,
         {publicFeed.length > 0 && (
           <div className="mb-4 space-y-1">
             <div className="flex justify-between text-xs">
-              <span className="text-primary">{publicFeed.filter(f => f.choice === "RED").length} RED</span>
-              <span className="text-blue-400">{publicFeed.filter(f => f.choice === "BLUE").length} BLUE</span>
+              <span className="text-primary">
+                {publicFeed.filter(f => f.choice === "RED").length} RED
+              </span>
+              <span className="text-blue-400">
+                {publicFeed.filter(f => f.choice === "BLUE").length} BLUE
+              </span>
             </div>
             <div className="w-full h-3 bg-background flex overflow-hidden border border-border">
               <motion.div
@@ -168,15 +172,16 @@ export default function GameB8({ onSubmit, isLocked, currentSubmission, results,
           {publicFeed.map((f, i) => (
             <motion.div
               key={i}
-              initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
               className="flex justify-between items-center p-2 border-b border-border/30 text-xs"
             >
-              <span className="text-textMuted">#{i + 1} <span className="opacity-40 hover:opacity-100 transition-opacity">{f.playerName}</span></span>
+              <span className="text-textMuted">#{i + 1} <span className="opacity-40">{f.playerName}</span></span>
               <span className={`font-bold ${f.choice === "RED" ? "text-primary" : "text-blue-400"}`}>{f.choice}</span>
             </motion.div>
           ))}
 
-          {/* Currently deciding indicator */}
+          {/* Currently deciding */}
           {gameState?.phase === "active" && currentTurnIndex < queue.length && (
             <div className="flex justify-between items-center p-2 border border-secondary/40 border-dashed bg-secondary/5 text-secondary text-xs animate-pulse mt-1">
               <span>#{currentTurnIndex + 1} {isMyTurn ? "YOU" : "Player"}</span>
@@ -188,9 +193,7 @@ export default function GameB8({ onSubmit, isLocked, currentSubmission, results,
 
       {/* Interaction Block */}
       <div className="border-t border-border pt-4">
-        {!inQueue ? (
-          <p className="text-xs text-textMuted text-center py-6 uppercase tracking-widest">You are not in the cascade queue.</p>
-        ) : myTurnHasPassed ? (
+        {myTurnHasPassed ? (
           <div className="p-5 border border-border bg-surface text-center space-y-2">
             <p className="text-xs uppercase tracking-widest text-textMuted">Your decision is recorded.</p>
             <p className={`text-3xl font-bold ${currentSubmission === "RED" ? "text-primary" : "text-blue-400"}`}>{currentSubmission}</p>
@@ -201,9 +204,6 @@ export default function GameB8({ onSubmit, isLocked, currentSubmission, results,
             <p className="text-center text-sm uppercase tracking-widest text-secondary font-bold animate-pulse">
               ▶ It is your turn — choose now
             </p>
-            {serverError && (
-              <p className="text-primary text-xs text-center animate-pulse">{serverError}</p>
-            )}
             {timeLeft !== null && (
               <div className={`text-center text-xs uppercase tracking-widest border p-2 ${timeLeft <= 5 ? "text-primary border-primary/40 bg-primary/5 animate-pulse" : "text-textMuted border-border"}`}>
                 {timeLeft}s — auto-submits your signal if time runs out
@@ -211,15 +211,15 @@ export default function GameB8({ onSubmit, isLocked, currentSubmission, results,
             )}
             <div className="flex gap-4">
               <button
-                onClick={() => setShowConfirm("RED")}
-                disabled={advancing}
+                onClick={() => handleChoice("RED")}
+                disabled={submitted}
                 className="flex-1 bg-primary/20 border-2 border-primary text-primary hover:bg-primary hover:text-white py-8 text-2xl tracking-widest font-bold transition-all shadow-[0_0_20px_rgba(255,0,0,0.2)] disabled:opacity-40"
               >
                 RED
               </button>
               <button
-                onClick={() => setShowConfirm("BLUE")}
-                disabled={advancing}
+                onClick={() => handleChoice("BLUE")}
+                disabled={submitted}
                 className="flex-1 bg-blue-500/20 border-2 border-blue-500 text-blue-400 hover:bg-blue-500 hover:text-white py-8 text-2xl tracking-widest font-bold transition-all shadow-[0_0_20px_rgba(59,130,246,0.2)] disabled:opacity-40"
               >
                 BLUE
@@ -230,7 +230,9 @@ export default function GameB8({ onSubmit, isLocked, currentSubmission, results,
           <div className="p-6 border border-border bg-surface text-center space-y-2">
             <p className="text-xs uppercase tracking-widest text-textMuted">Waiting for your turn</p>
             <p className="text-xl font-bold font-mono text-textDefault">Queue Position: #{myQueueIndex + 1}</p>
-            <p className="text-[10px] text-textMuted">{currentTurnIndex < myQueueIndex ? `${myQueueIndex - currentTurnIndex} players before you` : "Your turn is next"}</p>
+            <p className="text-[10px] text-textMuted">
+              {currentTurnIndex < myQueueIndex ? `${myQueueIndex - currentTurnIndex} players before you` : "Your turn is next!"}
+            </p>
           </div>
         )}
       </div>
@@ -239,7 +241,9 @@ export default function GameB8({ onSubmit, isLocked, currentSubmission, results,
       <AnimatePresence>
         {showConfirm && (
           <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-4 backdrop-blur-sm"
           >
             <div className="max-w-sm w-full bg-surface border-2 border-secondary p-8 space-y-8 text-center">
@@ -254,12 +258,16 @@ export default function GameB8({ onSubmit, isLocked, currentSubmission, results,
                 </p>
               </div>
               <div className="flex gap-4">
-                <button onClick={() => setShowConfirm(null)}
-                  className="flex-1 border border-border bg-background py-3 uppercase tracking-widest text-xs hover:bg-border transition">
+                <button
+                  onClick={() => setShowConfirm(null)}
+                  className="flex-1 border border-border bg-background py-3 uppercase tracking-widest text-xs hover:bg-border transition"
+                >
                   Change
                 </button>
-                <button onClick={() => { setShowConfirm(null); advanceTurn(showConfirm); }}
-                  className={`flex-1 text-white py-3 uppercase tracking-widest text-xs font-bold transition ${showConfirm === "RED" ? "bg-primary hover:bg-primary/80" : "bg-blue-500 hover:bg-blue-500/80"}`}>
+                <button
+                  onClick={() => { setShowConfirm(null); handleChoice(showConfirm); }}
+                  className={`flex-1 text-white py-3 uppercase tracking-widest text-xs font-bold transition ${showConfirm === "RED" ? "bg-primary hover:bg-primary/80" : "bg-blue-500 hover:bg-blue-500/80"}`}
+                >
                   Confirm
                 </button>
               </div>

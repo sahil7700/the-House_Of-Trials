@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { subscribeToGameState, subscribeToEventConfig, submitGameInput, GameState, EventConfig } from "@/lib/services/game-service";
 import { subscribeToPlayer, PlayerData } from "@/lib/services/player-service";
-import { collection, onSnapshot, query } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -52,10 +52,13 @@ export default function GameUI() {
       }
     });
 
-    const unsubPlayers = onSnapshot(query(collection(db, "players")), (snap) => {
-      const all = snap.docs.map(d => d.data() as PlayerData);
-      setLiveAliveCount(all.filter(p => p.status === "alive").length);
-      setLiveSubmittedCount(all.filter(p => p.status === "alive" && p.currentSubmission !== null).length);
+    const unsubPlayers = onSnapshot(query(collection(db, "players"), where("status", "==", "alive")), (snap) => {
+      setLiveAliveCount(snap.size);
+      let subCount = 0;
+      snap.forEach(d => {
+        if (d.data().currentSubmission !== null) subCount++;
+      });
+      setLiveSubmittedCount(subCount);
     });
 
     return () => {

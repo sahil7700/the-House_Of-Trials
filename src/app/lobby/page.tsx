@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { subscribeToGameState, GameState } from "@/lib/services/game-service";
 import { PlayerData, subscribeToPlayer } from "@/lib/services/player-service";
-import { collection, onSnapshot, query } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { motion } from "framer-motion";
 
@@ -62,10 +62,13 @@ export default function LobbyPage() {
       }
     });
 
-    const unsubPlayers = onSnapshot(query(collection(db, "players")), (snap) => {
-      const all = snap.docs.map(d => d.data() as PlayerData);
-      setAliveCount(all.filter(p => p.status === "alive").length);
-      setSubmittedCount(all.filter(p => p.status === "alive" && p.currentSubmission !== null).length);
+    const unsubPlayers = onSnapshot(query(collection(db, "players"), where("status", "==", "alive")), (snap) => {
+      setAliveCount(snap.size);
+      let subCount = 0;
+      snap.forEach(d => {
+        if (d.data().currentSubmission !== null) subCount++;
+      });
+      setSubmittedCount(subCount);
     });
 
     return () => {

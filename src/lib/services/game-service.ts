@@ -7,7 +7,7 @@ import { checkRateLimit, checkIdempotency } from "./rate-limit";
 // ==========================================
 
 export const VALID_PHASE_TRANSITIONS: Record<GamePhase, GamePhase[]> = {
-  lobby: ["active", "active_a"],
+  lobby: ["active", "active_a", "image_flash", "phase_a_open", "roles_assigned", "pairing"],
   active: ["locked"],
   locked: ["calculating", "reveal"],
   calculating: ["reveal"],
@@ -19,6 +19,23 @@ export const VALID_PHASE_TRANSITIONS: Record<GamePhase, GamePhase[]> = {
   locked_a: ["active_b"],
   active_b: ["locked_b"],
   locked_b: ["calculating"],
+  // B8 phases
+  image_flash: ["voting_open"],
+  voting_open: ["voting_locked", "confidence"],
+  voting_locked: ["confidence", "confidence_locked", "calculating"],
+  confidence: ["confidence_locked"],
+  confidence_locked: ["calculating"],
+  // C9 phases
+  phase_a_open: ["phase_a_locked"],
+  phase_a_locked: ["phase_b_open"],
+  phase_b_open: ["phase_b_locked"],
+  phase_b_locked: ["calculating"],
+  // LEMONS phases
+  roles_assigned: ["card_flash"],
+  card_flash: ["trading_open"],
+  trading_open: ["trading_locked"],
+  trading_locked: ["calculating"],
+  pairing: ["phase_a_open"],
 };
 
 export function isValidPhaseTransition(from: GamePhase, to: GamePhase): boolean {
@@ -29,7 +46,7 @@ export function isValidPhaseTransition(from: GamePhase, to: GamePhase): boolean 
 // V2 ARCHITECTURE - GAME SLOTS
 // ==========================================
 
-export type GamePhase = "lobby" | "active" | "locked" | "calculating" | "reveal" | "confirm" | "standby" | "game_over" | "active_a" | "locked_a" | "active_b" | "locked_b";
+export type GamePhase = "lobby" | "active" | "locked" | "calculating" | "reveal" | "confirm" | "standby" | "game_over" | "active_a" | "locked_a" | "active_b" | "locked_b" | "image_flash" | "voting_open" | "voting_locked" | "confidence" | "confidence_locked" | "phase_a_open" | "phase_a_locked" | "phase_b_open" | "phase_b_locked" | "roles_assigned" | "card_flash" | "trading_open" | "trading_locked" | "pairing";
 export type TieBreakerRule = "eliminate_all" | "eliminate_none" | "admin";
 export type EliminationMode = "fixed" | "percentage" | "threshold" | "majority";
 
@@ -90,6 +107,70 @@ export interface GameState {
     content: any;
     pushedAt: any;
   } | null;
+  // B8 Information Cascade fields
+  b8Config?: {
+    questionId?: string;
+    customQuestion?: string;
+    correctAnswer?: "A" | "B";
+    optionALabel?: string;
+    optionBLabel?: string;
+    imageFlashSeconds?: number;
+    votingSeconds?: number;
+    confidenceEnabled?: boolean;
+    confidenceSeconds?: number;
+    fakeMajorityEnabled?: boolean;
+    fakeMajorityBiasToward?: "A" | "B";
+    fakeMajorityStartPercent?: number;
+  };
+  b8Results?: {
+    totalVoters?: number;
+    votesA?: number;
+    votesB?: number;
+    nullVotes?: number;
+    correctAnswer?: "A" | "B";
+    eliminatedCount?: number;
+    overconfidentCount?: number;
+  } | null;
+  b8RevealStep?: number;
+  imageFlashStartedAt?: any | null;
+  votingStartedAt?: any | null;
+  confidenceStartedAt?: any | null;
+  // C9 Sequence Match fields
+  sequenceConfig?: {
+    phaseASeconds?: number;
+    phaseBSeconds?: number;
+    showOpponentName?: boolean;
+    exactMatchBonus?: number;
+    winnerPoints?: number;
+    loserPoints?: number;
+    tieRule?: "admin_decides" | "both_eliminated" | "both_safe";
+  };
+  sequencePairsCreated?: boolean;
+  sequenceByePlayerId?: string | null;
+  sequencePhaseAStartedAt?: any | null;
+  sequencePhaseBStartedAt?: any | null;
+  sequenceTiedPairs?: string[];
+  sequenceRevealStep?: number;
+  sequenceRevealedPairId?: string | null;
+  // LEMONS Market of Lemons fields
+  marketConfig?: {
+    numSellers?: number;
+    numBuyers?: number;
+    goldPct?: number;
+    sellerPct?: number;
+    cardFlashSeconds?: number;
+    tradingSeconds?: number;
+  };
+  marketRoles?: {
+    sellers?: string[];
+    buyers?: string[];
+    goldCards?: string[];
+    leadCards?: string[];
+  };
+  tradingStartedAt?: any | null;
+  revealStep?: number;
+  // Allow any additional dynamic fields
+  [key: string]: any;
 }
 
 // ==========================================

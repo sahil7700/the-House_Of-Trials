@@ -10,38 +10,46 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "slotNumber is required" }, { status: 400 });
     }
 
+    console.log("[create-pairs] Starting for slot:", slotNumber);
+
     const playersSnap = await getDocs(
       query(collection(db, "players"), where("status", "==", "alive"))
     );
     const alivePlayers = playersSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+    console.log("[create-pairs] Found alive players:", alivePlayers.length);
 
     if (alivePlayers.length === 0) {
-      return NextResponse.json({ error: "No alive players found", detail: "No players with status='alive' in database" }, { status: 404 });
+      return NextResponse.json({ error: "No alive players found", detail: "No players with status='alive' in database. Make sure players have joined and are marked 'alive'." }, { status: 404 });
+    }
+
+    if (alivePlayers.length < 2) {
+      return NextResponse.json({ error: "Need at least 2 alive players to form pairs", detail: `Only ${alivePlayers.length} alive player(s) found.` }, { status: 400 });
     }
 
     const shuffled = [...alivePlayers].sort(() => 0.5 - Math.random());
 
     let byePlayer = null;
-    let players = shuffled;
+    let pairedPlayers = shuffled;
 
     if (shuffled.length % 2 !== 0) {
       const byeIndex = Math.floor(Math.random() * shuffled.length);
       byePlayer = shuffled.splice(byeIndex, 1)[0];
+      console.log("[create-pairs] Bye player:", byePlayer?.id);
     }
 
     const pairs: any[] = [];
-    const pairBatch = writeBatch(db);
+    const batch = writeBatch(db);
 
-    for (let i = 0; i < players.length; i += 2) {
+    for (let i = 0; i < pairedPlayers.length; i += 2) {
       const pairId = `pair_${String(slotNumber)}_${i / 2 + 1}`;
       const pair = {
         pairId,
         pairIndex: i / 2 + 1,
         slotNumber: Number(slotNumber),
-        playerAId: players[i].id,
-        playerAName: players[i].name || players[i].id,
-        playerBId: players[i + 1].id,
-        playerBName: players[i + 1].name || players[i + 1].id,
+        playerAId: pairedPlayers[i].id,
+        playerAName: String(pairedPlayers[i].name || pairedPlayers[i].id),
+        playerBId: pairedPlayers[i + 1].id,
+        playerBName: String(pairedPlayers[i + 1].name || pairedPlayers[i + 1].id),
         playerA_sequence: null,
         playerA_sequenceLockedAt: null,
         playerB_sequence: null,
@@ -56,9 +64,10 @@ export async function POST(req: NextRequest) {
         loserId: null,
         tied: false,
         byePair: false,
+        createdAt: new Date().toISOString(),
       };
       pairs.push(pair);
-      pairBatch.set(doc(db, "sequencePairs", pairId), pair);
+      batch.set(doc(db, "sequencePairs", pairId), pair);
     }
 
     if (byePlayer) {
@@ -68,7 +77,7 @@ export async function POST(req: NextRequest) {
         pairIndex: pairs.length + 1,
         slotNumber: Number(slotNumber),
         playerAId: byePlayer.id,
-        playerAName: byePlayer.name || byePlayer.id,
+        playerAName: String(byePlayer.name || byePlayer.id),
         playerBId: "BYE",
         playerBName: "BYE — Auto-advance",
         playerA_sequence: null,
@@ -85,12 +94,13 @@ export async function POST(req: NextRequest) {
         loserId: null,
         tied: false,
         byePair: true,
+        createdAt: new Date().toISOString(),
       };
       pairs.push(byePair);
-      pairBatch.set(doc(db, "sequencePairs", byePairId), byePair);
+      batch.set(doc(db, "sequencePairs", byePairId), byePair);
     }
 
-    pairBatch.update(doc(db, "system", "gameState"), {
+    batch.update(doc(db, "system", "gameState"), {
       sequencePairsCreated: true,
       sequenceByePlayerId: byePlayer?.id || null,
       sequencePhaseAStartedAt: null,
@@ -108,7 +118,8 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    await pairBatch.commit();
+    await batch.commit();
+    console.log("[create-pairs] Success. Created", pairs.length, "pairs. Bye:", byePlayer?.id || "none");
 
     return NextResponse.json({
       success: true,
@@ -118,7 +129,7 @@ export async function POST(req: NextRequest) {
       playerCount: alivePlayers.length,
     });
   } catch (error: any) {
-    console.error("Create pairs error:", error);
+    console.error("[create-pairs] Error:", error);
     return NextResponse.json(
       { error: "Pairing failed", detail: error.message, stack: error.stack },
       { status: 500 }

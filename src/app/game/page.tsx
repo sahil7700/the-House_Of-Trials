@@ -69,14 +69,44 @@ export default function GameUI() {
   // Single-fire lock ref for auto-submit triggers
   const autoLockFiredRound = useRef<number>(-1);
 
+  // Define all active game phases — these keep player on /game page
+  const ACTIVE_GAME_PHASES = [
+    "active", "active_a", "active_b", "locked", "locked_a", "locked_b",
+    "calculating", "reveal", "confirm",
+    // B8 phases
+    "image_flash", "voting_open", "voting_locked", "confidence", "confidence_locked",
+    // C9 phases
+    "phase_a_open", "phase_a_locked", "phase_b_open", "phase_b_locked",
+    // LEMONS phases
+    "roles_assigned", "card_flash", "trading_open", "trading_locked",
+    "pairing",
+  ];
+
+  // Define terminal/redirect phases
+  const LOBBY_PHASES = ["lobby", "standby"];
+  const ELIMINATED_PHASES = ["reveal", "confirm"];
+
   useEffect(() => {
-    if (gameState?.phase === "lobby" || gameState?.phase === "standby") {
+    if (!gameState || !player) return;
+    
+    const phase = gameState.phase;
+
+    // Redirect eliminated players to /eliminated
+    if (ELIMINATED_PHASES.includes(phase)) {
+      const elimIds = gameState.pendingEliminations || [];
+      const elimResults = gameState.results?.eliminatedPlayerIds || elimIds;
+      if (player.status === "eliminated" || elimResults.includes(player.id)) {
+        router.push("/eliminated");
+        return;
+      }
+    }
+
+    // Redirect to lobby when game is over
+    if (LOBBY_PHASES.includes(phase)) {
       router.push("/lobby");
+      return;
     }
-    if (gameState?.phase === "reveal" && player?.status === "eliminated") {
-       setTimeout(() => router.push("/eliminated"), 3000); 
-    }
-  }, [gameState?.phase, player?.status, router]);
+  }, [gameState?.phase, player?.status, player?.id, router]);
 
   useEffect(() => {
     if (!gameState || !["active", "active_a", "active_b", "open_a", "open_b"].includes(gameState.phase) || !gameState.timerStartedAt) {

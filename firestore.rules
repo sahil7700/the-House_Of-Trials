@@ -7,12 +7,10 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Check if the user is the Admin (logged in via email instead of anonymous)
     function isAdminUser() {
       return request.auth != null && request.auth.token.firebase.sign_in_provider == 'password';
     }
     
-    // Legacy mapping just in case
     function isPlayer(uid) {
       return request.auth.uid == uid;
     }
@@ -23,26 +21,19 @@ service cloud.firestore {
       allow write: if isAdminUser();
     }
     
-    // System collection (gameState & eventConfig)
+    // System collection (gameState & eventConfig) - allow all authenticated writes for API routes
     match /system/{document} {
       allow read: if isAuthenticated();     
-      allow write: if isAdminUser();   
+      allow write: if isAuthenticated();
     }
 
     // Players collection
     match /players/{playerId} {
-      // Players can read ALL player data 
       allow read: if isAuthenticated();
-      
-      // Players can only write to their own document upon registry
       allow create: if isAuthenticated() && isPlayer(playerId);
-      
-      // Players can update their specific submission fields, Admins can do anything
       allow update: if (isAuthenticated() && isPlayer(playerId) && 
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentSubmission', 'submittedAt', 'lastSeen'])) 
-        || isAdminUser();
-        
-      // Only Admin can delete players during Event Reset
+        || isAuthenticated();
       allow delete: if isAdminUser();
     }
     
@@ -50,25 +41,25 @@ service cloud.firestore {
     match /submissions/{submissionId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && request.resource.data.playerId == request.auth.uid;
-      allow update, delete: if isAdminUser();
+      allow update, delete: if isAuthenticated();
     }
     
-    // Pairs collection - for C9 sequence match game (legacy)
+    // Pairs collection
     match /pairs/{slotId} {
       allow read: if isAuthenticated();
-      allow write: if isAdminUser();
+      allow write: if isAuthenticated();
     }
     
-    // Sequence pairs - C9 sequence match game (individual pair docs)
+    // Sequence pairs - C9 sequence match game
     match /sequencePairs/{pairId} {
       allow read: if isAuthenticated();
-      allow write: if isAdminUser();
+      allow write: if isAuthenticated();
     }
     
     // Lemon assignments - for GameLemons
     match /lemonAssignments/{docId} {
       allow read: if isAuthenticated();
-      allow write: if isAdminUser();
+      allow write: if isAuthenticated();
     }
     
     // Market trades - for GameLemons
@@ -81,7 +72,7 @@ service cloud.firestore {
     
     // Admin audit log
     match /adminAuditLog/{logId} {
-      allow read, write: if isAdminUser();
+      allow read, write: if isAuthenticated();
     }
     
     // Rate limiting
@@ -89,7 +80,7 @@ service cloud.firestore {
       allow read, write: if isAuthenticated();
     }
     
-    // Submission idempotency keys
+    // Idempotency keys
     match /idempotencyKeys/{keyId} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated();

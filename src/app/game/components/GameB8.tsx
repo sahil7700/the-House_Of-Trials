@@ -197,36 +197,76 @@ export default function GameB8({ gameState, playerId }: Props) {
   }
 
   if (phase === "image_flash") {
+    const displayLabel = b8Config?.customQuestion || b8Config?.optionALabel || "Option A";
+    const displayLabelB = b8Config?.optionBLabel || "Option B";
     return (
-      <div className="fixed inset-0 bg-black flex flex-col items-center justify-center">
+      <div className="fixed inset-0 bg-black flex flex-col items-center justify-center overflow-hidden">
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5 }}
           className="absolute inset-0 flex items-center justify-center"
         >
-          <div className="w-full h-full bg-gradient-to-br from-surface to-background flex items-center justify-center">
-            <div className="text-center space-y-8 max-w-md px-8">
-              <h2 className="text-4xl font-serif text-white uppercase tracking-widest">Observe</h2>
-              <div className="border-2 border-secondary p-8">
-                <p className="text-secondary text-lg font-mono uppercase">{optionALabel}</p>
-                <p className="text-textMuted text-sm mt-4">vs</p>
-                <p className="text-blue-400 text-lg font-mono uppercase mt-4">{optionBLabel}</p>
-              </div>
+          <div className="w-full h-full bg-gradient-to-br from-[#0a0015] via-[#150025] to-[#0a0015] flex items-center justify-center">
+            <div className="text-center space-y-6 max-w-2xl px-8">
+              <motion.h2 
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+                className="text-3xl font-serif text-white uppercase tracking-widest"
+              >
+                Observe Carefully
+              </motion.h2>
+              
+              {b8Config?.customQuestion ? (
+                <motion.div 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.5 }}
+                  className="border-2 border-secondary/50 p-6 bg-surface/50 backdrop-blur-sm"
+                >
+                  <p className="text-secondary text-lg font-mono uppercase tracking-widest">{displayLabel}</p>
+                </motion.div>
+              ) : (
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.5 }}
+                  className="flex items-center justify-center gap-8"
+                >
+                  <div className="border-2 border-primary p-6 bg-primary/10 shadow-glow-red">
+                    <p className="text-primary text-2xl font-mono uppercase tracking-widest font-bold">{displayLabel}</p>
+                  </div>
+                  <div className="text-textMuted text-3xl font-bold">VS</div>
+                  <div className="border-2 border-blue-500 p-6 bg-blue-500/10">
+                    <p className="text-blue-400 text-2xl font-mono uppercase tracking-widest font-bold">{displayLabelB}</p>
+                  </div>
+                </motion.div>
+              )}
             </div>
           </div>
         </motion.div>
-        <div className="absolute top-0 left-0 right-0 h-1 bg-secondary overflow-hidden">
-          <motion.div
-            className="h-full bg-white"
-            animate={{ width: `${((flashRemaining ?? imageFlashSeconds) / imageFlashSeconds) * 100}%` }}
-            transition={{ duration: 0.5 }}
-          />
+        <div className="absolute top-0 left-0 right-0 z-30">
+          <div className="h-2 bg-background/50">
+            <motion.div
+              className="h-full bg-gradient-to-r from-secondary via-primary to-secondary"
+              animate={{ width: `${((flashRemaining ?? imageFlashSeconds) / imageFlashSeconds) * 100}%` }}
+              transition={{ duration: 0.3 }}
+            />
+          </div>
+        </div>
+        <div className="absolute bottom-8 left-0 right-0 text-center z-30">
+          <p className={`text-5xl font-mono font-bold ${(flashRemaining ?? imageFlashSeconds) <= 1 ? "text-primary animate-pulse" : "text-white/60"}`}>
+            {flashRemaining ?? imageFlashSeconds}
+          </p>
         </div>
       </div>
     );
   }
 
   if (phase === "voting_open" && !myVote) {
+    const voteLabelA = b8Config?.optionALabel || "Option A";
+    const voteLabelB = b8Config?.optionBLabel || "Option B";
     return (
       <div className="w-full max-w-md mx-auto px-4 pt-8 pb-12 space-y-8 font-mono">
         {fakeMajorityEnabled && (
@@ -234,7 +274,7 @@ export default function GameB8({ gameState, playerId }: Props) {
             <p className="text-[10px] uppercase tracking-widest text-textMuted text-center">Live Votes</p>
             <div className="space-y-1">
               <div className="flex justify-between items-center text-xs">
-                <span className="text-primary font-bold">{optionALabel}</span>
+                <span className="text-primary font-bold">{voteLabelA}</span>
                 <span className="text-primary font-mono">{fakeA}%</span>
               </div>
               <div className="w-full h-3 bg-background border border-border overflow-hidden">
@@ -243,7 +283,7 @@ export default function GameB8({ gameState, playerId }: Props) {
             </div>
             <div className="space-y-1">
               <div className="flex justify-between items-center text-xs">
-                <span className="text-blue-400 font-bold">{optionBLabel}</span>
+                <span className="text-blue-400 font-bold">{voteLabelB}</span>
                 <span className="text-blue-400 font-mono">{fakeB}%</span>
               </div>
               <div className="w-full h-3 bg-background border border-border overflow-hidden">
@@ -263,11 +303,11 @@ export default function GameB8({ gameState, playerId }: Props) {
         <div className="space-y-3">
           <button onClick={() => handleVote("A")}
             className="w-full py-6 bg-surface border-2 border-primary text-primary font-bold uppercase tracking-widest text-lg hover:bg-primary hover:text-white transition-colors shadow-glow-red">
-            {optionALabel}
+            {voteLabelA}
           </button>
           <button onClick={() => handleVote("B")}
             className="w-full py-6 bg-surface border-2 border-blue-500 text-blue-400 font-bold uppercase tracking-widest text-lg hover:bg-blue-500 hover:text-white transition-colors">
-            {optionBLabel}
+            {voteLabelB}
           </button>
         </div>
 

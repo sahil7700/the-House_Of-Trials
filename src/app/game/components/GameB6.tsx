@@ -18,22 +18,40 @@ export default function GameB6({ onSubmit, isLocked, currentSubmission, results,
 
   const [bid, setBid] = useState(Math.min(50, Math.max(1, Math.floor(myCoins / 2))));
   const [showConfirm, setShowConfirm] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   const [revealStep, setRevealStep] = useState(0);
+
+  // Reset all local state on new active round (handles slot transitions and fresh rounds)
+  useEffect(() => {
+    if (gameState?.phase === "active") {
+      setSubmitted(false);
+      setBid(Math.min(50, Math.max(1, Math.floor(myCoins / 2))));
+      setRevealStep(0);
+      setShowConfirm(false);
+    }
+  }, [gameState?.phase, gameState?.currentSlot]);
+
+  // Sync with Firestore state: if already submitted in this round, reflect it
+  useEffect(() => {
+    if (currentSubmission !== null && currentSubmission !== undefined) {
+      setSubmitted(true);
+    }
+  }, [currentSubmission]);
 
   // Auto-submit when time is up
   useEffect(() => {
-    if (timeLeft === 0 && !isLocked && currentSubmission === null) {
+    if (timeLeft === 0 && !isLocked && !submitted && currentSubmission === null) {
       onSubmit(bid);
+      setSubmitted(true);
     }
-  }, [timeLeft, isLocked, currentSubmission, bid, onSubmit]);
+  }, [timeLeft, isLocked, submitted, currentSubmission, bid, onSubmit]);
 
   useEffect(() => {
     if (gameState.phase === "reveal" && results) {
-      // Sequence the reveal
-      setRevealStep(1); // Histogram
-      const t1 = setTimeout(() => setRevealStep(2), 2000); // Elimination zone
-      const t2 = setTimeout(() => setRevealStep(3), 4000); // Penalty zone
-      const t3 = setTimeout(() => setRevealStep(4), 6000); // Verdict
+      setRevealStep(1);
+      const t1 = setTimeout(() => setRevealStep(2), 2000);
+      const t2 = setTimeout(() => setRevealStep(3), 4000);
+      const t3 = setTimeout(() => setRevealStep(4), 6000);
       return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
     }
   }, [gameState.phase, results]);
@@ -43,8 +61,10 @@ export default function GameB6({ onSubmit, isLocked, currentSubmission, results,
   };
 
   const handleConfirm = () => {
-    onSubmit(bid);
+    if (isLocked || submitted) return;
+    setSubmitted(true);
     setShowConfirm(false);
+    onSubmit(bid);
   };
 
   if (gameState.phase === "reveal" && results) {
@@ -52,7 +72,6 @@ export default function GameB6({ onSubmit, isLocked, currentSubmission, results,
     const myBid = currentSubmission;
     const isHighest = results.highestBidderIds?.includes(playerId);
     
-    // Convert histogram to sorted bars
     const bars = Object.entries(results.histogram || {})
        .map(([val, count]) => ({ val: parseInt(val), count: count as number }))
        .filter(b => b.count > 0)
@@ -141,6 +160,19 @@ export default function GameB6({ onSubmit, isLocked, currentSubmission, results,
     );
   }
 
+  if (submitted) {
+    return (
+      <div className="text-center space-y-6 max-w-md mx-auto p-8 border border-secondary/50 bg-secondary/5 mt-12">
+         <h2 className="text-2xl font-serif text-secondary tracking-[0.2em] uppercase">Bid Placed</h2>
+         <p className="text-4xl font-mono text-secondary">{bid}</p>
+         <p className="text-sm text-textMuted uppercase tracking-widest">Waiting for other players...</p>
+         {timeLeft !== null && (
+           <p className="text-xs text-textMuted">Time remaining: {timeLeft}s</p>
+         )}
+      </div>
+    );
+  }
+
   return (
     <div className="w-full max-w-md mx-auto space-y-8 mt-4">
        <div className="text-center space-y-2 mb-12">
@@ -198,7 +230,6 @@ export default function GameB6({ onSubmit, isLocked, currentSubmission, results,
          </p>
        )}
 
-       {/* Confirm Overlay */}
        <AnimatePresence>
           {showConfirm && (
              <motion.div 

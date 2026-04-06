@@ -470,6 +470,84 @@ export default function ProjectorClient() {
       );
     }
 
+    // =============================================
+    // LEMONS PHASE PROJECTOR
+    // =============================================
+    if ((gameState as any).phase === "roles_assigned") {
+      const sellers = (gameState as any).marketRoles?.sellers || [];
+      const buyers = (gameState as any).marketRoles?.buyers || [];
+      return (
+        <div className="flex flex-col items-center justify-center h-full space-y-8 animate-fade-in z-20 text-center px-4">
+           <h1 className="text-[80px] font-serif text-secondary uppercase tracking-widest drop-shadow-glow">Market of Lemons</h1>
+           <p className="text-3xl text-white font-mono uppercase tracking-widest">{sellers.length} Sellers · {buyers.length} Buyers</p>
+           <p className="text-2xl text-textMuted font-mono uppercase tracking-widest animate-pulse">Preparing card reveal...</p>
+        </div>
+      );
+    }
+
+    if ((gameState as any).phase === "card_flash") {
+      const sellers = (gameState as any).marketRoles?.sellers || [];
+      return (
+        <div className="flex flex-col items-center justify-center h-full space-y-8 animate-fade-in z-20 text-center px-4">
+           <h1 className="text-[80px] font-serif text-secondary uppercase tracking-widest">Sellers — View Your Card</h1>
+           <p className="text-2xl text-white font-mono uppercase tracking-widest">Buyers — Stand by</p>
+        </div>
+      );
+    }
+
+    if ((gameState as any).phase === "trading_open") {
+      const tradingStartedAt = (gameState as any).tradingStartedAt;
+      const tradingSecs = (gameState as any).marketConfig?.tradingSeconds || 300;
+      const start = tradingStartedAt?.toDate?.()?.getTime() || Date.now();
+      const elapsed = (Date.now() - start) / 1000;
+      const remaining = Math.max(0, tradingSecs - elapsed);
+      const m = Math.floor(remaining / 60);
+      const s = Math.floor(remaining % 60);
+      const timeStr = `${m}:${s.toString().padStart(2, "0")}`;
+
+      return (
+        <div className="flex flex-col items-center justify-center h-full space-y-8 animate-fade-in z-20 text-center px-4">
+           <h1 className="text-[80px] font-serif text-primary uppercase tracking-widest drop-shadow-glow-red">Trading Is Open</h1>
+           <p className={`text-[160px] font-mono font-bold leading-none ${remaining <= 30 ? "text-primary animate-pulse" : "text-primary"}`}>
+             {timeStr}
+           </p>
+        </div>
+      );
+    }
+
+    if ((gameState as any).phase === "trading_locked") {
+      return (
+        <div className="flex flex-col items-center justify-center h-full space-y-8 animate-fade-in z-20 text-center px-4">
+           <h1 className="text-[80px] font-serif text-secondary uppercase tracking-widest">Trading Has Ended</h1>
+           <p className="text-2xl text-textMuted font-mono uppercase tracking-widest animate-pulse">Preparing the reveal...</p>
+        </div>
+      );
+    }
+
+    if ((gameState as any).phase === "reveal") {
+      const revealStep = (gameState as any).revealStep || 0;
+      const marketRoles: any = (gameState as any).marketRoles || {};
+      const results: any[] = (gameState as any).results || [];
+      const sellers = marketRoles.sellers || [];
+
+      if (revealStep === 0) {
+        return (
+          <div className="flex flex-col items-center justify-center h-full space-y-8 animate-fade-in z-20 text-center">
+             <h1 className="text-[80px] font-serif text-secondary uppercase tracking-widest">Preparing Results...</h1>
+             <div className="w-16 h-16 border-4 border-secondary border-t-transparent rounded-full animate-spin" />
+          </div>
+        );
+      }
+
+      return (
+        <div className="flex flex-col items-center justify-center h-full space-y-8 animate-fade-in z-20 text-center px-4">
+           <h1 className="text-[80px] font-serif text-secondary uppercase tracking-widest">Market of Lemons</h1>
+           <p className="text-2xl text-textMuted font-mono uppercase tracking-widest">Results complete — check your device</p>
+           <p className="text-xl text-primary font-mono uppercase tracking-widest">{results.filter((r: any) => r.outcome === "eliminated").length} eliminated · {results.filter((r: any) => r.outcome !== "eliminated").length} survived</p>
+        </div>
+      );
+    }
+
     return null;
   };
 

@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { GameState } from "@/lib/services/game-service";
 import { PlayerData } from "@/lib/services/player-service";
 import { db } from "@/lib/firebase";
-import { collection, doc, onSnapshot, query, where, writeBatch, getDocs } from "firebase/firestore";
-import { motion, AnimatePresence } from "framer-motion";
+import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { motion } from "framer-motion";
 
 interface Props {
   gameState: GameState;
@@ -12,254 +12,466 @@ interface Props {
 }
 
 export default function GameLemonsAdmin({ gameState, players, onUpdateGameState }: Props) {
-  const gsc = (gameState as any).gameSpecificConfig || {};
-  const slotNumber = gameState.currentSlot;
-  const isLobby = gameState.phase === "lobby";
-  const isActive = gameState.phase === "active";
-  const isReveal = gameState.phase === "reveal" || gameState.phase === "confirm";
+  const alivePlayers = players.filter(p => p.status === "alive");
+  const marketConfig = (gameState as any).marketConfig || {};
+  const marketRoles: any = (gameState as any).marketRoles || {};
+  const revealStep: number = (gameState as any).revealStep || 0;
+  const phase: string = gameState.phase || "lobby";
+  const cardFlashStartedAt = (gameState as any).cardFlashStartedAt;
+  const tradingStartedAt = (gameState as any).tradingStartedAt;
+  const results: any[] = (gameState as any).results || [];
+  const pendingEliminations: string[] = (gameState as any).pendingEliminations || [];
 
-  const [goldPct, setGoldPct] = useState(gsc.goldPct ?? 40);
-  const [sellerPct, setSellerPct] = useState(gsc.sellerPct ?? 50);
-  const [assignments, setAssignments] = useState<any[]>([]);
+  // Config state
+  const [numSellers, setNumSellers] = useState(Math.max(1, Math.ceil(alivePlayers.length * 0.2)));
+  const [numGold, setNumGold] = useState(Math.ceil(Math.max(1, Math.ceil(alivePlayers.length * 0.2)) * 0.6));
+  const [cardFlashSeconds, setCardFlashSeconds] = useState(2);
+  const [tradingSeconds, setTradingSeconds] = useState(300);
+  const [saving, setSaving] = useState(false);
+  const [assignedData, setAssignedData] = useState<any>(null);
   const [trades, setTrades] = useState<any[]>([]);
-  const [isProcessing, setProcessing] = useState(false);
-  const [processError, setProcessError] = useState<string | null>(null);
+  const [timerLeft, setTimerLeft] = useState<number | null>(null);
+  const [flashLeft, setFlashLeft] = useState<number | null>(null);
 
-  const autoAssignedFiredRef = useRef(false);
-  const prevPhaseRef = useRef(gameState.phase);
-
+  // Live trades listener
   useEffect(() => {
-    prevPhaseRef.current = gameState.phase;
-  }, [gameState.phase]);
+    if (phase !== "trading_open" && phase !== "trading_locked" && phase !== "reveal") return;
+    const q = query(collection(db, "marketTrades"), where("slotNumber", "==", gameState.currentSlot));
+    const unsub = onSnapshot(q, snap => setTrades(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    return () => unsub();
+  }, [phase, gameState.currentSlot]);
 
+  // Trading countdown
   useEffect(() => {
-    const assignmentsQ = query(collection(db, "lemonAssignments"), where("slotNumber", "==", slotNumber));
-    const tradesQ = query(collection(db, "marketTrades"), where("slotNumber", "==", slotNumber));
-
-    const unsubA = onSnapshot(assignmentsQ, snap => {
-      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setAssignments(docs);
-    });
-
-    const unsubT = onSnapshot(tradesQ, snap => {
-      setTrades(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-
-    return () => {
-      unsubA();
-      unsubT();
+    if (phase !== "trading_open" || !tradingStartedAt) return;
+    const tradingSecs = marketConfig.tradingSeconds || 300;
+    const start = tradingStartedAt?.toDate?.()?.getTime() || Date.now();
+    const tick = () => {
+      const elapsed = (Date.now() - start) / 1000;
+      const remaining = Math.max(0, tradingSecs - elapsed);
+      setTimerLeft(Math.ceil(remaining));
     };
-  }, [slotNumber]);
+    tick();
+    const interval = setInterval(tick, 500);
+    return () => clearInterval(interval);
+  }, [phase, tradingStartedAt, marketConfig.tradingSeconds]);
 
+  // Card flash countdown
   useEffect(() => {
-    if (isLobby) {
-      autoAssignedFiredRef.current = false;
-    }
-  }, [isLobby, slotNumber]);
+    if (phase !== "card_flash" || !cardFlashStartedAt) return;
+    const flashSecs = marketConfig.cardFlashSeconds || 2;
+    const start = cardFlashStartedAt?.toDate?.()?.getTime() || Date.now();
+    const tick = () => {
+      const elapsed = (Date.now() - start) / 1000;
+      const remaining = Math.max(0, flashSecs - elapsed);
+      setFlashLeft(Math.ceil(remaining));
+    };
+    tick();
+    const interval = setInterval(tick, 100);
+    return () => clearInterval(interval);
+  }, [phase, cardFlashStartedAt, marketConfig.cardFlashSeconds]);
 
-  useEffect(() => {
-    if (
-      gameState.phase === "active" &&
-      !autoAssignedFiredRef.current &&
-      assignments.length === 0 &&
-      players.filter(p => p.status === "alive").length >= 2
-    ) {
-      autoAssignedFiredRef.current = true;
-      handleAssignRoles(true);
-    }
-  }, [gameState.phase, assignments.length, players]);
+  const sellers = marketRoles.sellers || [];
+  const buyers = marketRoles.buyers || [];
+  const completedTrades = trades.filter(t => t.status === "accepted");
+  const pendingTrades = trades.filter(t => t.status === "pending");
+  const rejectedTrades = trades.filter(t => t.status === "rejected" || t.status === "expired");
+  const sellersWhoSold = completedTrades.map(t => t.sellerId);
+  const eliminatedCount = pendingEliminations.length;
 
-  const handleAssignRoles = async (silent = false) => {
-    setProcessing(true);
-    setProcessError(null);
-    try {
-      const alivePlayersNow = players.filter(p => p.status === "alive");
-      if (alivePlayersNow.length < 2) {
-        throw new Error("Need at least 2 alive players to assign roles.");
-      }
-
-      const shuffled = [...alivePlayersNow].sort(() => Math.random() - 0.5);
-      const numSellers = Math.max(1, Math.ceil((sellerPct / 100) * shuffled.length));
-      const sellers = shuffled.slice(0, numSellers);
-      const buyers = shuffled.slice(numSellers);
-
-      const numGold = Math.ceil((goldPct / 100) * sellers.length);
-      const sellerShuffled = [...sellers].sort(() => Math.random() - 0.5);
-
-      const batch = writeBatch(db);
-      sellerShuffled.forEach((p, i) => {
-        batch.set(doc(db, "lemonAssignments", `${slotNumber}_${p.id}`), {
-          playerId: p.id,
-          playerName: p.name,
-          role: "seller",
-          asset: i < numGold,
-          slotNumber,
-          outcome: null,
-        }, { merge: true });
-      });
-      buyers.forEach(p => {
-        batch.set(doc(db, "lemonAssignments", `${slotNumber}_${p.id}`), {
-          playerId: p.id,
-          playerName: p.name,
-          role: "buyer",
-          asset: null,
-          slotNumber,
-          outcome: null,
-        }, { merge: true });
-      });
-      await batch.commit();
-
-      if (onUpdateGameState) {
-        onUpdateGameState({
-          gameSpecificConfig: { ...gsc, goldPct, sellerPct, assignmentsCreated: true },
-        } as any);
-      }
-    } catch (e: any) {
-      setProcessError(e.message);
-      autoAssignedFiredRef.current = false;
-    } finally {
-      setProcessing(false);
-    }
+  const formatTime = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
-  const handleFinalizeMarket = async () => {
-    setProcessing(true);
-    try {
-      const batch = writeBatch(db);
-      for (const trade of trades) {
-        if (trade.status !== "accepted") continue;
-        const sellerAssign = assignments.find(a => a.playerId === trade.sellerId);
-        const outcome = sellerAssign?.asset ? "GOLD" : "LEMON";
-        batch.update(doc(db, "lemonAssignments", `${slotNumber}_${trade.buyerId}`), { outcome });
-      }
-      await batch.commit();
+  // ── STEP 1: LOBBY CONFIG ──
+  if (phase === "lobby") {
+    return (
+      <div className="w-full space-y-6 p-4 border border-secondary/40 bg-secondary/5">
+        <h3 className="text-sm uppercase tracking-widest text-secondary font-bold">Market of Lemons — Setup</h3>
 
-      if (onUpdateGameState) {
-        onUpdateGameState({ phase: "reveal" } as any);
-      }
-    } catch (e: any) {
-      setProcessError(e.message);
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const sellerAssignments = assignments.filter(a => a.role === "seller");
-  const buyerAssignments = assignments.filter(a => a.role === "buyer");
-  const acceptedCount = trades.filter(t => t.status === "accepted").length;
-  const pendingCount = trades.filter(t => t.status === "pending").length;
-  const aliveCount = players.filter(p => p.status === "alive").length;
-  const hasAssignments = assignments.length > 0;
-
-  return (
-    <div className="w-full space-y-6 font-mono">
-      {isLobby && !hasAssignments && (
-        <div className="p-4 border border-secondary/40 bg-secondary/5 space-y-6">
-          <h3 className="text-sm uppercase tracking-widest text-secondary font-bold">Market of Lemons — Setup</h3>
-          <p className="text-xs text-textMuted">Roles are auto-assigned when the round starts. Configure below first.</p>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-[10px] text-textMuted uppercase tracking-widest block">
-                Sellers ({sellerPct}%)
-              </label>
-              <input type="range" min="30" max="70" value={sellerPct} onChange={e => setSellerPct(+e.target.value)}
-                className="w-full accent-secondary" />
-              <p className="text-xs text-secondary">≈ {Math.max(1, Math.ceil((sellerPct / 100) * aliveCount))} Sellers</p>
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] text-textMuted uppercase tracking-widest block">
-                Gold Ratio ({goldPct}%)
-              </label>
-              <input type="range" min="20" max="80" value={goldPct} onChange={e => setGoldPct(+e.target.value)}
-                className="w-full accent-secondary" />
-              <p className="text-xs text-amber-400">≈ {Math.ceil((goldPct / 100) * Math.max(1, Math.ceil((sellerPct / 100) * aliveCount)))} Gold sellers</p>
-            </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <label className="text-[10px] text-textMuted uppercase tracking-widest block">Number of Sellers</label>
+            <input type="number" min={1} max={alivePlayers.length - 1} value={numSellers}
+              onChange={e => {
+                const n = parseInt(e.target.value) || 1;
+                setNumSellers(n);
+                setNumGold(Math.ceil(n * 0.6));
+              }}
+              className="w-full bg-background border border-border px-3 py-2 text-sm outline-none focus:border-secondary" />
+            <p className="text-[10px] text-textMuted">{alivePlayers.length - numSellers} buyers</p>
           </div>
-
-          <button
-            onClick={() => handleAssignRoles(false)}
-            disabled={isProcessing || aliveCount < 2}
-            className="w-full py-4 bg-secondary text-background font-bold uppercase tracking-widest hover:bg-white transition-colors disabled:opacity-40"
-          >
-            {isProcessing ? "Assigning..." : `MANUALLY ASSIGN ROLES (${aliveCount} players)`}
-          </button>
-          {processError && <p className="text-primary text-xs">{processError}</p>}
+          <div className="space-y-2">
+            <label className="text-[10px] text-textMuted uppercase tracking-widest block">Gold Cards</label>
+            <input type="number" min={0} max={numSellers} value={numGold}
+              onChange={e => setNumGold(parseInt(e.target.value) || 0)}
+              className="w-full bg-background border border-border px-3 py-2 text-sm outline-none focus:border-secondary" />
+            <p className="text-[10px] text-amber-400">{numSellers - numGold} Lead cards</p>
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] text-textMuted uppercase tracking-widest block">Card Flash (seconds)</label>
+            <input type="number" min={1} max={10} value={cardFlashSeconds}
+              onChange={e => setCardFlashSeconds(parseInt(e.target.value) || 2)}
+              className="w-full bg-background border border-border px-3 py-2 text-sm outline-none focus:border-secondary" />
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] text-textMuted uppercase tracking-widest block">Trading Time (seconds)</label>
+            <input type="number" min={30} max={600} value={tradingSeconds}
+              onChange={e => setTradingSeconds(parseInt(e.target.value) || 300)}
+              className="w-full bg-background border border-border px-3 py-2 text-sm outline-none focus:border-secondary" />
+            <p className="text-[10px] text-textMuted">{formatTime(tradingSeconds)}</p>
+          </div>
         </div>
-      )}
 
-      {(isActive || hasAssignments) && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-4 border border-border bg-surface p-4 text-center text-xs">
-            <div>
-              <p className="text-textMuted uppercase tracking-widest text-[10px] mb-1">Sellers</p>
-              <p className="text-xl">{sellerAssignments.length}</p>
+        <button
+          onClick={async () => {
+            if (!onUpdateGameState) return;
+            setSaving(true);
+            try {
+              const res = await fetch("/api/game/lemons/assign-roles", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  slotNumber: gameState.currentSlot,
+                  numSellers,
+                  numGoldCards: numGold,
+                  numLeadCards: numSellers - numGold,
+                  cardFlashSeconds,
+                  tradingSeconds,
+                }),
+              });
+              const data = await res.json();
+              if (data.success) {
+                setAssignedData(data);
+                onUpdateGameState({ phase: "roles_assigned" } as any);
+              } else {
+                alert(data.error || "Failed to assign roles.");
+              }
+            } catch (e: any) {
+              alert(e.message);
+            } finally {
+              setSaving(false);
+            }
+          }}
+          disabled={saving || alivePlayers.length < 2}
+          className="w-full py-4 bg-secondary text-background font-bold uppercase tracking-widest hover:bg-white transition-colors disabled:opacity-40"
+        >
+          {saving ? "Assigning..." : `Assign Roles (${alivePlayers.length} players)`}
+        </button>
+      </div>
+    );
+  }
+
+  // ── STEP 2: ROLES ASSIGNED ──
+  if (phase === "roles_assigned") {
+    const data = assignedData || { sellers: sellers.map((id: string) => {
+      const p = players.find(pl => pl.id === id);
+      return { id, name: p?.name || id, card: (p as any)?.marketCard || "?" };
+    }), buyers: buyers.map((id: string) => {
+      const p = players.find(pl => pl.id === id);
+      return { id, name: p?.name || id };
+    })};
+
+    return (
+      <div className="w-full space-y-6 p-4">
+        <div className="border border-secondary bg-secondary/5 p-4">
+          <h3 className="text-sm uppercase tracking-widest text-secondary font-bold mb-4">Roles Assigned — Admin Cheat Sheet</h3>
+
+          <div className="grid grid-cols-2 gap-4 text-xs mb-4">
+            <div className="border border-amber-500/30 bg-amber-900/10 p-3 text-center">
+              <p className="text-amber-400 font-bold text-xl">{data.sellers?.filter((s: any) => s.card === "gold").length || 0}</p>
+              <p className="text-textMuted uppercase">Gold Cards</p>
             </div>
-            <div>
-              <p className="text-textMuted uppercase tracking-widest text-[10px] mb-1">Buyers</p>
-              <p className="text-xl">{buyerAssignments.length}</p>
-            </div>
-            <div>
-              <p className="text-textMuted uppercase tracking-widest text-[10px] mb-1">Trades</p>
-              <p className="text-xl text-secondary">{acceptedCount}</p>
+            <div className="border border-gray-500/30 bg-gray-900/10 p-3 text-center">
+              <p className="text-gray-400 font-bold text-xl">{data.sellers?.filter((s: any) => s.card === "lead").length || 0}</p>
+              <p className="text-textMuted uppercase">Lead Cards</p>
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 text-center text-xs">
-            <div className="border border-green-700/30 bg-green-900/10 p-2">
-              <p className="text-green-400 font-bold">{sellerAssignments.filter(s => s.asset === true).length}</p>
-              <p className="text-[10px] text-textMuted uppercase">Gold</p>
+          <div className="space-y-3">
+            <div className="border-b border-border pb-2">
+              <p className="text-[10px] text-secondary uppercase tracking-widest mb-2">Sellers</p>
+              <div className="space-y-1">
+                {(data.sellers || []).map((s: any) => (
+                  <div key={s.id} className="flex justify-between items-center text-xs py-1">
+                    <span>{s.name} <span className="text-textMuted/50">({s.id?.substring(0, 6)})</span></span>
+                    <span className={`font-bold uppercase ${s.card === "gold" ? "text-amber-400" : "text-gray-400"}`}>
+                      {s.card === "gold" ? "GOLD" : "LEAD"}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="border border-primary/30 bg-primary/5 p-2">
-              <p className="text-primary font-bold">{sellerAssignments.filter(s => s.asset === false).length}</p>
-              <p className="text-[10px] text-textMuted uppercase">Lemons</p>
-            </div>
-            <div className="border border-amber-500/30 bg-amber-900/10 p-2">
-              <p className="text-amber-400 font-bold">{pendingCount}</p>
-              <p className="text-[10px] text-textMuted uppercase">Pending</p>
+            <div>
+              <p className="text-[10px] text-textMuted uppercase tracking-widest mb-2">{data.buyers?.length || 0} Buyers</p>
             </div>
           </div>
+        </div>
 
-          {pendingCount > 0 && (
-            <div className="border border-amber-500/40 bg-amber-900/10 p-3 text-center">
-              <p className="text-amber-400 text-xs uppercase tracking-widest">{pendingCount} pending trades waiting for buyer response</p>
-            </div>
+        <button
+          onClick={async () => {
+            setSaving(true);
+            try {
+              const res = await fetch("/api/game/lemons/start-card-flash", { method: "POST" });
+              const data = await res.json();
+              if (!data.success) alert(data.error);
+            } catch (e: any) { alert(e.message); }
+            finally { setSaving(false); }
+          }}
+          disabled={saving}
+          className="w-full py-4 bg-primary text-white font-bold uppercase tracking-widest hover:bg-primary/80 transition-colors disabled:opacity-40 shadow-glow-red"
+        >
+          {saving ? "..." : "Start Card Flash"}
+        </button>
+      </div>
+    );
+  }
+
+  // ── STEP 3: CARD FLASH ──
+  if (phase === "card_flash") {
+    return (
+      <div className="w-full space-y-6 p-4 text-center">
+        <div className="border border-secondary bg-secondary/5 p-6">
+          <h3 className="text-xl font-serif text-secondary uppercase tracking-widest mb-4">Card Flash in Progress</h3>
+          {flashLeft !== null && (
+            <p className="text-6xl font-mono font-bold text-secondary animate-pulse">{flashLeft}s</p>
           )}
+          <p className="text-textMuted text-sm mt-4 uppercase tracking-widest">Sellers are viewing their cards.</p>
+          <p className="text-textMuted/50 text-xs mt-1">Buyers see a waiting screen.</p>
+        </div>
 
-          {isActive && (
-            <button
-              onClick={handleFinalizeMarket}
-              disabled={isProcessing}
-              className="w-full py-3 border border-primary text-primary uppercase tracking-widest text-xs hover:bg-primary hover:text-white transition-colors shadow-glow-red disabled:opacity-40"
-            >
-              {isProcessing ? "Finalizing..." : "CLOSE MARKET & REVEAL OUTCOMES"}
-            </button>
-          )}
+        <button
+          onClick={async () => {
+            setSaving(true);
+            try {
+              await fetch("/api/game/lemons/open-trading", { method: "POST" });
+            } catch (e: any) { alert(e.message); }
+            finally { setSaving(false); }
+          }}
+          disabled={saving}
+          className="w-full py-4 bg-primary text-white font-bold uppercase tracking-widest hover:bg-primary/80 transition-colors disabled:opacity-40 shadow-glow-red"
+        >
+          {saving ? "..." : "Open Trading Manually"}
+        </button>
+      </div>
+    );
+  }
 
-          <div className="border border-border bg-surface p-4 max-h-64 overflow-y-auto space-y-2">
-            <p className="text-[10px] text-textMuted uppercase tracking-widest mb-3">Live Trade Log</p>
-            {trades.length === 0 && <p className="text-textMuted text-xs text-center py-4">No trades yet.</p>}
-            {trades.map(t => {
-              const seller = sellerAssignments.find(a => a.playerId === t.sellerId);
-              const buyer = buyerAssignments.find(a => a.playerId === t.buyerId);
+  // ── STEP 4: TRADING OPEN ──
+  if (phase === "trading_open") {
+    return (
+      <div className="w-full space-y-4 p-4">
+        {/* Stats */}
+        <div className="grid grid-cols-4 gap-2 text-center text-xs">
+          <div className="border border-border bg-surface p-3">
+            <p className="text-secondary font-bold text-xl">{completedTrades.length}</p>
+            <p className="text-textMuted uppercase text-[10px]">Completed</p>
+          </div>
+          <div className="border border-border bg-surface p-3">
+            <p className="text-amber-400 font-bold text-xl">{pendingTrades.length}</p>
+            <p className="text-textMuted uppercase text-[10px]">Pending</p>
+          </div>
+          <div className="border border-border bg-surface p-3">
+            <p className="text-textMuted font-bold text-xl">{sellersWhoSold.length}/{sellers.length}</p>
+            <p className="text-textMuted uppercase text-[10px]">Sold</p>
+          </div>
+          <div className={`border bg-surface p-3 ${(timerLeft ?? 0) <= 30 ? "border-primary" : "border-border"}`}>
+            <p className={`font-mono font-bold text-xl ${(timerLeft ?? 0) <= 30 ? "text-primary animate-pulse" : "text-primary"}`}>
+              {timerLeft !== null ? formatTime(timerLeft) : "--:--"}
+            </p>
+            <p className="text-textMuted uppercase text-[10px]">Time Left</p>
+          </div>
+        </div>
+
+        {/* Seller board */}
+        <div className="border border-border bg-surface p-3">
+          <p className="text-[10px] text-textMuted uppercase tracking-widest mb-2">Seller Board</p>
+          <div className="space-y-1 max-h-48 overflow-y-auto">
+            {sellers.map((sellerId: string) => {
+              const trade = completedTrades.find(t => t.sellerId === sellerId);
+              const sellerPlayer = players.find(p => p.id === sellerId);
+              const sellerCard = (sellerPlayer as any)?.marketCard || "?";
               return (
-                <div key={t.id} className={`flex justify-between items-center p-2 border text-xs ${t.status === "accepted" ? "border-green-700/50 bg-green-900/10" : t.status === "declined" ? "border-primary/30 bg-primary/5 opacity-60" : "border-secondary/30"}`}>
-                  <span className="text-secondary">{seller?.playerName || t.sellerId?.substring(0, 6)}</span>
-                  <span className="text-textMuted">→ {buyer?.playerName || t.buyerId?.substring(0, 6)}</span>
-                  <span className={t.status === "accepted" ? "text-green-400" : t.status === "declined" ? "text-primary" : "text-amber-400"}>{t.status?.toUpperCase()}</span>
+                <div key={sellerId} className={`flex justify-between items-center p-2 border-b border-border/20 text-xs ${trade ? "border-l-2 border-l-green-500 bg-green-900/10" : ""}`}>
+                  <span>{sellerPlayer?.name || sellerId?.substring(0, 6)}</span>
+                  <span className={`font-bold uppercase ${sellerCard === "gold" ? "text-amber-400" : "text-gray-400"}`}>
+                    {sellerCard} {trade ? `→ ${trade.buyerName?.substring(0, 6) || "?"}` : ""}
+                  </span>
                 </div>
               );
             })}
           </div>
         </div>
-      )}
 
-      {isReveal && (
-        <div className="border border-secondary bg-secondary/10 p-4 text-center">
-          <p className="text-secondary font-bold uppercase tracking-widest text-sm">Market Closed — Results Revealed</p>
-          <p className="text-secondary text-xs mt-1">{acceptedCount} completed trades</p>
+        {/* Trade log */}
+        <div className="border border-border bg-surface p-3">
+          <p className="text-[10px] text-textMuted uppercase tracking-widest mb-2">Live Trade Log</p>
+          <div className="space-y-1 max-h-48 overflow-y-auto">
+            {trades.length === 0 && <p className="text-textMuted/50 text-xs text-center py-4">No trades yet.</p>}
+            {trades.map(t => (
+              <div key={t.id} className={`flex justify-between items-center p-2 border-b border-border/20 text-xs ${t.status === "accepted" ? "text-green-400" : t.status === "pending" ? "text-amber-400" : "text-primary/60"}`}>
+                <span>{t.buyerName?.substring(0, 8)} → {t.sellerName?.substring(0, 8)}</span>
+                <span className="uppercase font-bold">{t.status}</span>
+              </div>
+            ))}
+          </div>
         </div>
-      )}
+
+        <button
+          onClick={async () => {
+            setSaving(true);
+            try {
+              await fetch("/api/game/lemons/end-trading", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ slotNumber: gameState.currentSlot }),
+              });
+            } catch (e: any) { alert(e.message); }
+            finally { setSaving(false); }
+          }}
+          disabled={saving}
+          className="w-full py-3 border border-primary text-primary uppercase tracking-widest text-xs font-bold hover:bg-primary hover:text-white transition-colors shadow-glow-red disabled:opacity-40"
+        >
+          {saving ? "..." : "End Trading Early"}
+        </button>
+      </div>
+    );
+  }
+
+  // ── STEP 5: TRADING LOCKED ──
+  if (phase === "trading_locked") {
+    return (
+      <div className="w-full space-y-6 p-4 text-center">
+        <div className="border border-secondary bg-secondary/5 p-6">
+          <h3 className="text-xl font-serif text-secondary uppercase tracking-widest mb-2">Trading Ended</h3>
+          <p className="text-textMuted text-sm">{completedTrades.length} trades completed · {pendingTrades.length} expired</p>
+        </div>
+
+        <button
+          onClick={async () => {
+            setSaving(true);
+            try {
+              const res = await fetch("/api/game/lemons/calculate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ slotNumber: gameState.currentSlot }),
+              });
+              const data = await res.json();
+              if (!data.success) {
+                alert(data.error || "Calculation failed.");
+              } else {
+                onUpdateGameState?.({ results: data.results } as any);
+              }
+            } catch (e: any) { alert(e.message); }
+            finally { setSaving(false); }
+          }}
+          disabled={saving}
+          className="w-full py-4 bg-secondary text-background font-bold uppercase tracking-widest hover:bg-white transition-colors disabled:opacity-40 shadow-glow-gold"
+        >
+          {saving ? "Calculating..." : "Calculate Results"}
+        </button>
+      </div>
+    );
+  }
+
+  // ── STEP 6: REVEAL ──
+  if (phase === "reveal") {
+    return (
+      <div className="w-full space-y-4 p-4">
+        <div className="border border-secondary bg-secondary/5 p-4">
+          <h3 className="text-sm uppercase tracking-widest text-secondary font-bold mb-3">Results Preview</h3>
+          <div className="space-y-2 text-xs max-h-48 overflow-y-auto">
+            {(results || []).map((r: any, i: number) => (
+              <div key={i} className={`flex justify-between items-center p-2 border-b border-border/20 ${r.outcome === "eliminated" ? "text-primary" : "text-secondary"}`}>
+                <span>{r.buyerName || r.buyerId?.substring(0, 6)} — {r.sellerName ? `← ${r.sellerName?.substring(0, 6)}` : "No trade"}</span>
+                <span className="uppercase font-bold">
+                  {r.cardType ? r.cardType.toUpperCase() : r.outcome === "no_trade" ? "NO TRADE" : r.outcome?.toUpperCase()}
+                </span>
+              </div>
+            ))}
+            {results.length === 0 && <p className="text-textMuted/50 text-center py-4">No results yet.</p>}
+          </div>
+        </div>
+
+        {/* Reveal step buttons */}
+        <div className="grid grid-cols-3 gap-2 text-xs">
+          <button
+            onClick={async () => {
+              await fetch("/api/game/lemons/reveal", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ step: 1 }),
+              });
+            }}
+            disabled={revealStep >= 1}
+            className={`py-3 border font-bold uppercase tracking-widest transition-colors ${revealStep >= 1 ? "bg-secondary/20 border-secondary text-secondary cursor-not-allowed" : "border-secondary text-secondary hover:bg-secondary hover:text-background"}`}
+          >
+            1. Seller Cards
+          </button>
+          <button
+            onClick={async () => {
+              await fetch("/api/game/lemons/reveal", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ step: 2 }),
+              });
+            }}
+            disabled={revealStep >= 2}
+            className={`py-3 border font-bold uppercase tracking-widest transition-colors ${revealStep >= 2 ? "bg-secondary/20 border-secondary text-secondary cursor-not-allowed" : "border-secondary text-secondary hover:bg-secondary hover:text-background"}`}
+          >
+            2. Trade Results
+          </button>
+          <button
+            onClick={async () => {
+              await fetch("/api/game/lemons/reveal", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ step: 3 }),
+              });
+            }}
+            disabled={revealStep >= 3}
+            className={`py-3 border font-bold uppercase tracking-widest transition-colors ${revealStep >= 3 ? "bg-secondary/20 border-secondary text-secondary cursor-not-allowed" : "border-secondary text-secondary hover:bg-secondary hover:text-background"}`}
+          >
+            3. Verdict
+          </button>
+        </div>
+
+        {revealStep >= 3 && (
+          <button
+            onClick={async () => {
+              setSaving(true);
+              try {
+                await fetch("/api/game/lemons/confirm-eliminations", { method: "POST" });
+              } catch (e: any) { alert(e.message); }
+              finally { setSaving(false); }
+            }}
+            disabled={saving}
+            className="w-full py-4 bg-primary text-white font-bold uppercase tracking-widest hover:bg-primary/80 transition-colors disabled:opacity-40 shadow-glow-red"
+          >
+            {saving ? "..." : `Confirm Eliminations (${eliminatedCount} eliminated)`}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // ── CONFIRMED ──
+  if (phase === "confirmed") {
+    return (
+      <div className="w-full space-y-6 p-4 text-center">
+        <div className="border border-secondary bg-secondary/10 p-6">
+          <h3 className="text-xl font-serif text-secondary uppercase tracking-widest">Results Confirmed</h3>
+          <p className="text-textMuted text-sm mt-2">{eliminatedCount} players eliminated.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 text-textMuted text-sm uppercase tracking-widest">
+      Lemons — phase: {phase}
     </div>
   );
 }

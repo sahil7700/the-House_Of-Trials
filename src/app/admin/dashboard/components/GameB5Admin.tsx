@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { GameState } from "@/lib/services/game-service";
 import { PlayerData } from "@/lib/services/player-service";
+import { doc, writeBatch } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { motion } from "framer-motion";
 import answersData from "@/lib/data/blackhole_answers.json";
 
@@ -18,6 +20,7 @@ export default function GameB5Admin({ gameState, players, onUpdateGameState }: P
   const isLobby = gameState.phase === "lobby";
   const isActive = gameState.phase === "active";
   const isLocked = gameState.phase === "locked";
+  const isReveal = gameState.phase === "reveal";
 
   const puzzleKeys = Object.keys(answersData).sort() as PuzzleKey[];
   const [selectedPuzzle, setSelectedPuzzle] = useState<PuzzleKey>((gsc.puzzleKey as PuzzleKey) || puzzleKeys[0]);
@@ -25,14 +28,27 @@ export default function GameB5Admin({ gameState, players, onUpdateGameState }: P
   const [pointDecay, setPointDecay] = useState(gsc.pointDecay ?? 5);
   const [answerVisible, setAnswerVisible] = useState(false);
 
-  const currentPuzzle = answersData[selectedPuzzle];
+  const [correctPlayerIds, setCorrectPlayerIds] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
 
-  const submissions = alivePlayers.filter(p =>
-    p.currentSubmission !== null && p.currentSubmission !== undefined
-  );
+  const currentPuzzle = answersData[selectedPuzzle];
+  const correctAnswer = currentPuzzle.top_answer;
+
+  const toggleCorrect = (playerId: string) => {
+    setCorrectPlayerIds(prev => {
+      const next = new Set(prev);
+      if (next.has(playerId)) {
+        next.delete(playerId);
+      } else {
+        next.add(playerId);
+      }
+      return next;
+    });
+  };
 
   const handleStartRound = () => {
     if (!onUpdateGameState) return;
+    setCorrectPlayerIds(new Set());
     onUpdateGameState({
       phase: "active",
       gameSpecificConfig: {
@@ -50,72 +66,56 @@ export default function GameB5Admin({ gameState, players, onUpdateGameState }: P
     } as any);
   };
 
-  const handleReveal = () => {
+  const handleReveal = async () => {
     if (!onUpdateGameState) return;
+    setSaving(true);
 
-    const correct = currentPuzzle.top_answer;
-    const submissionsWithTime = submissions
-      .map(p => ({
-        playerId: p.id,
-        name: p.name,
-        answer: (p.currentSubmission as any)?.answer,
-        submittedAt: (p.currentSubmission as any)?.submittedAt?.toDate?.() || new Date(),
-      }))
-      .filter(s => s.answer !== null && s.answer !== undefined);
+    const correctIds = Array.from(correctPlayerIds);
+    const wrongIds = alivePlayers
+      .map(p => p.id)
+      .filter(id => !correctPlayerIds.has(id));
 
-    const correctOnes = submissionsWithTime
-      .filter(s => Number(s.answer) === correct)
-      .sort((a, b) => a.submittedAt.getTime() - b.submittedAt.getTime());
-
-    const eliminatedPlayerIds: string[] = [];
     const pointsDeltaMap: Record<string, number> = {};
     const rankMap: Record<string, number> = {};
 
-    correctOnes.forEach((s, i) => {
-      rankMap[s.playerId] = i + 1;
-      const pts = Math.max(0, maxPoints - i * pointDecay);
-      pointsDeltaMap[s.playerId] = pts;
+    correctIds.forEach((id, i) => {
+      rankMap[id] = i + 1;
+      pointsDeltaMap[id] = Math.max(0, maxPoints - i * pointDecay);
+    });
+    wrongIds.forEach(id => {
+      pointsDeltaMap[id] = 0;
     });
 
-    submissionsWithTime.forEach(s => {
-      if (rankMap[s.playerId] === undefined) {
-        pointsDeltaMap[s.playerId] = 0;
-        eliminatedPlayerIds.push(s.playerId);
-      }
+    const batch = writeBatch(db);
+    [...correctIds, ...wrongIds].forEach(playerId => {
+      const pts = pointsDeltaMap[playerId];
+      const isCorrect = correctPlayerIds.has(playerId);
+      batch.update(doc(db, "players", playerId), {
+        currentSubmission: { adminMarkedCorrect: isCorrect, answer: null },
+        points: (players.find(p => p.id === playerId)?.points || 0) + pts,
+      });
     });
+    batch.update(doc(db, "system", "gameState"), { results: null });
+    await batch.commit();
 
     onUpdateGameState({
       phase: "reveal",
       results: {
-        correctAnswer: correct,
-        eliminatedPlayerIds,
+        correctAnswer,
+        correctPlayerIds: correctIds,
+        wrongPlayerIds: wrongIds,
         pointsDeltaMap,
         rankMap,
-        totalCorrect: correctOnes.length,
-        submissions: submissionsWithTime.map(s => ({
-          name: s.name,
-          answer: s.answer,
-          correct: Number(s.answer) === correct,
-          rank: rankMap[s.playerId] || null,
-          points: pointsDeltaMap[s.playerId] || 0,
+        totalCorrect: correctIds.length,
+        correctPlayers: correctIds.map((id, i) => ({
+          name: players.find(p => p.id === id)?.name || "Unknown",
+          rank: i + 1,
+          points: Math.max(0, maxPoints - i * pointDecay),
         })),
       },
     } as any);
+    setSaving(false);
   };
-
-  const correctAnswer = currentPuzzle.top_answer;
-  const submittedAnswers = submissions.map(p => ({
-    name: p.name,
-    answer: (p.currentSubmission as any)?.answer,
-    correct: Number((p.currentSubmission as any)?.answer) === correctAnswer,
-  }));
-  const correctCount = submittedAnswers.filter(a => a.correct).length;
-
-  // Leaderboard preview (sorted by answer for now — real ranking by time on reveal)
-  const sorted = [...submittedAnswers].sort((a, b) => {
-    if (a.correct !== b.correct) return a.correct ? -1 : 1;
-    return 0;
-  });
 
   return (
     <div className="w-full space-y-6 font-mono">
@@ -123,7 +123,6 @@ export default function GameB5Admin({ gameState, players, onUpdateGameState }: P
         <div className="space-y-6 p-4 border border-secondary/40 bg-secondary/5">
           <h3 className="text-sm uppercase tracking-widest text-secondary font-bold">Black Hole — Pyramid Puzzle Setup</h3>
 
-          {/* Puzzle selector */}
           <div className="space-y-3">
             <label className="text-[10px] text-textMuted uppercase tracking-widest block">Select Puzzle</label>
             <div className="grid grid-cols-5 gap-2">
@@ -146,7 +145,6 @@ export default function GameB5Admin({ gameState, players, onUpdateGameState }: P
               })}
             </div>
 
-            {/* Puzzle preview */}
             <div className="border border-border bg-background p-2">
               <img
                 src={`/blackhole/${selectedPuzzle}`}
@@ -155,7 +153,6 @@ export default function GameB5Admin({ gameState, players, onUpdateGameState }: P
               />
             </div>
 
-            {/* Answer toggle */}
             <div className="flex items-center justify-between bg-background border border-border p-3">
               <div>
                 <p className="text-xs uppercase tracking-widest">Correct Answer</p>
@@ -169,7 +166,7 @@ export default function GameB5Admin({ gameState, players, onUpdateGameState }: P
                     : "border-border text-textMuted hover:border-secondary/50"
                 }`}
               >
-                {answerVisible ? `✓ ${correctAnswer}` : "Show Answer"}
+                {answerVisible ? `Show ${correctAnswer}` : "Show Answer"}
               </button>
             </div>
 
@@ -207,12 +204,9 @@ export default function GameB5Admin({ gameState, players, onUpdateGameState }: P
             )}
           </div>
 
-          {/* Points config */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-[10px] text-textMuted uppercase tracking-widest block">
-                1st Place Points
-              </label>
+              <label className="text-[10px] text-textMuted uppercase tracking-widest block">1st Place Points</label>
               <input
                 type="number"
                 value={maxPoints}
@@ -221,9 +215,7 @@ export default function GameB5Admin({ gameState, players, onUpdateGameState }: P
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] text-textMuted uppercase tracking-widest block">
-                Points Decay / Rank
-              </label>
+              <label className="text-[10px] text-textMuted uppercase tracking-widest block">Points Decay / Rank</label>
               <input
                 type="number"
                 value={pointDecay}
@@ -243,7 +235,6 @@ export default function GameB5Admin({ gameState, players, onUpdateGameState }: P
         </div>
       ) : (
         <div className="space-y-4">
-          {/* Puzzle being played */}
           {selectedPuzzle && (
             <div className="border border-border bg-background p-2">
               <img
@@ -254,15 +245,14 @@ export default function GameB5Admin({ gameState, players, onUpdateGameState }: P
             </div>
           )}
 
-          {/* Stats */}
           <div className="grid grid-cols-3 gap-4 border border-border bg-surface p-4 text-center text-xs">
             <div>
-              <p className="text-[10px] text-textMuted uppercase mb-1">Submitted</p>
-              <p className="text-xl font-bold">{submissions.length} / {alivePlayers.length}</p>
+              <p className="text-[10px] text-textMuted uppercase mb-1">Players</p>
+              <p className="text-xl font-bold">{alivePlayers.length}</p>
             </div>
             <div>
-              <p className="text-[10px] text-textMuted uppercase mb-1">Correct</p>
-              <p className="text-xl font-bold text-secondary">{correctCount}</p>
+              <p className="text-[10px] text-textMuted uppercase mb-1">Marked Correct</p>
+              <p className="text-xl font-bold text-secondary">{correctPlayerIds.size}</p>
             </div>
             <div>
               <p className="text-[10px] text-textMuted uppercase mb-1">Answer</p>
@@ -270,32 +260,79 @@ export default function GameB5Admin({ gameState, players, onUpdateGameState }: P
             </div>
           </div>
 
-          {/* Live answer feed */}
-          <div className="border border-border bg-surface p-4 max-h-64 overflow-y-auto space-y-1">
-            <p className="text-[10px] text-textMuted uppercase tracking-widest mb-2">Submissions</p>
-            {sorted.length === 0 && (
-              <p className="text-textMuted/50 text-xs text-center py-4 italic">No submissions yet.</p>
-            )}
-            {sorted.map((s, i) => (
-              <div key={i} className="flex justify-between items-center p-2 border-b border-border/30 text-xs">
-                <span className={s.correct ? "text-secondary" : "text-textMuted"}>
-                  {s.name || s.name}
-                </span>
-                <span className={`font-mono font-bold ${s.correct ? "text-secondary" : "text-primary"}`}>
-                  {s.answer ?? "—"}
-                </span>
+          <div className="border border-border bg-surface p-4">
+            <p className="text-[10px] text-textMuted uppercase tracking-widest mb-3">
+              Mark Correct Players ({correctPlayerIds.size} marked)
+            </p>
+            {alivePlayers.length === 0 ? (
+              <p className="text-textMuted/50 text-xs text-center py-4 italic">No alive players.</p>
+            ) : (
+              <div className="space-y-1 max-h-64 overflow-y-auto">
+                {alivePlayers.map(p => {
+                  const isCorrect = correctPlayerIds.has(p.id);
+                  return (
+                    <motion.button
+                      key={p.id}
+                      onClick={() => toggleCorrect(p.id)}
+                      whileTap={{ scale: 0.97 }}
+                      className={`w-full flex items-center justify-between p-3 border text-xs transition-all ${
+                        isCorrect
+                          ? "border-secondary bg-secondary/10 text-secondary"
+                          : "border-border text-textMuted hover:border-secondary/30"
+                      }`}
+                    >
+                      <span className="font-bold">{p.name}</span>
+                      <span className={`font-mono font-bold ${isCorrect ? "text-secondary" : "text-textMuted/30"}`}>
+                        {isCorrect ? "✓ CORRECT" : "Mark correct"}
+                      </span>
+                    </motion.button>
+                  );
+                })}
               </div>
-            ))}
+            )}
           </div>
 
-          {/* Reveal */}
-          {isLocked && (
+          <div className="border border-border bg-surface p-3 space-y-2">
+            <p className="text-[10px] text-textMuted uppercase tracking-widest">Points Preview</p>
+            {Array.from(correctPlayerIds).map((id, i) => {
+              const pts = Math.max(0, maxPoints - i * pointDecay);
+              const player = players.find(p => p.id === id);
+              return (
+                <div key={id} className="flex justify-between items-center text-xs">
+                  <span className="text-secondary">#{i + 1} {player?.name || "?"}</span>
+                  <span className="text-secondary font-bold">+{pts} pts</span>
+                </div>
+              );
+            })}
+            {correctPlayerIds.size === 0 && (
+              <p className="text-textMuted/50 text-xs italic">No players marked correct yet.</p>
+            )}
+          </div>
+
+          {isActive && (
+            <button
+              onClick={handleStartRound}
+              className="w-full py-3 border border-secondary text-secondary uppercase tracking-widest text-xs font-bold hover:bg-secondary hover:text-background transition-colors"
+            >
+              LOCK & START MARKING
+            </button>
+          )}
+
+          {(isLocked || isActive) && (
             <button
               onClick={handleReveal}
-              className="w-full py-3 border border-secondary text-secondary uppercase tracking-widest text-xs font-bold hover:bg-secondary hover:text-background transition-colors shadow-glow-gold"
+              disabled={saving}
+              className="w-full py-4 bg-secondary text-background font-bold uppercase tracking-widest hover:bg-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-glow-gold"
             >
-              REVEAL RESULTS &amp; CALCULATE POINTS
+              {saving ? "SAVING..." : `REVEAL — GIVE POINTS (${correctPlayerIds.size} correct)`}
             </button>
+          )}
+
+          {isReveal && (
+            <div className="border border-secondary bg-secondary/10 p-4 text-center">
+              <p className="text-secondary font-bold uppercase tracking-widest text-sm">Results Revealed</p>
+              <p className="text-secondary text-xs mt-1">{correctPlayerIds.size} players marked correct</p>
+            </div>
           )}
         </div>
       )}

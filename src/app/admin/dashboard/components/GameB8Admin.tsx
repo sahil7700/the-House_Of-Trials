@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { GameState } from "@/lib/services/game-service";
 import { PlayerData } from "@/lib/services/player-service";
 import { db } from "@/lib/firebase";
-import { doc, updateDoc, writeBatch } from "firebase/firestore";
+import { doc, writeBatch } from "firebase/firestore";
 import { motion } from "framer-motion";
 
 interface Props {
@@ -11,84 +11,98 @@ interface Props {
   onUpdateGameState?: (update: Partial<GameState>) => void;
 }
 
-export default function GameB8Admin({ gameState, players, onUpdateGameState }: Props) {
-  const [redBias, setRedBias] = useState(60);
-  const [sequenceLength, setSequenceLength] = useState(0);
-  const processingTurnRef = useRef(false);
+const BATCH_SIZE = 20;
 
+export default function GameB8Admin({ gameState, players, onUpdateGameState }: Props) {
   const alivePlayers = players.filter(p => p.status === "alive");
   const gsc = (gameState as any).gameSpecificConfig || {};
   const queue: string[] = gsc.queue || [];
   const signals: Record<string, string> = gsc.signals || {};
   const publicFeed: any[] = gsc.publicFeed || [];
-  const currentTurnIndex: number = gsc.currentTurnIndex ?? 0;
+  const currentBatchIndex: number = gsc.currentBatchIndex ?? 0;
   const trueMajority: string = gsc.trueMajority || "UNKNOWN";
   const isLobby = gameState.phase === "lobby";
   const isActive = gameState.phase === "active";
   const isLocked = gameState.phase === "locked";
 
-  // Reset processing guard when phase changes
+  const [redBias, setRedBias] = useState(60);
+  const [sequenceLength, setSequenceLength] = useState(0);
+  const [autoAdvancing, setAutoAdvancing] = useState(false);
+  const [advancing, setAdvancing] = useState(false);
+  const [batchIntervalSec, setBatchIntervalSec] = useState(2);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [lastBatchResult, setLastBatchResult] = useState<any>(null);
+
+  const totalBatches = Math.ceil(queue.length / BATCH_SIZE);
+
   useEffect(() => {
-    if (gameState.phase !== "active") {
-      processingTurnRef.current = false;
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
+
+  const advanceBatch = async () => {
+    if (advancing || isLocked || !onUpdateGameState) return;
+    setAdvancing(true);
+    try {
+      const res = await fetch("/api/game/b8-batch-advance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          gameId: "B8",
+          gameSpecificConfig: {
+            ...gsc,
+            phase: gameState.phase,
+          },
+        }),
+      });
+      const data = await res.json();
+      setLastBatchResult(data);
+
+      if (data.done) {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+        setAutoAdvancing(false);
+        if (onUpdateGameState) {
+          onUpdateGameState({ phase: "locked" } as any);
+        }
+      } else {
+        if (onUpdateGameState) {
+          onUpdateGameState({
+            phase: "active",
+            gameSpecificConfig: {
+              ...gsc,
+              publicFeed: publicFeed,
+              currentBatchIndex: data.nextBatchIndex,
+              phase: "active",
+            },
+          } as any);
+        }
+      }
+    } catch (e) {
+      console.error("Batch advance failed:", e);
+    } finally {
+      setAdvancing(false);
     }
-  }, [gameState.phase]);
-
-  // ── CASCADE AUTO-ADVANCER ──
-  // Polls every 500ms to check if the current player has submitted
-  useEffect(() => {
-    if (gameState.phase !== "active") return;
-    if (currentTurnIndex >= queue.length) return;
-    if (processingTurnRef.current) return;
-
-    const currentPlayerId = queue[currentTurnIndex];
-    const currentPlayer = alivePlayers.find(p => p.id === currentPlayerId);
-
-    if (!currentPlayer) {
-      // Player not found — skip them automatically
-      advanceTurn(currentPlayerId, signals[currentPlayerId] || "RED", true);
-      return;
-    }
-
-    const choice = currentPlayer.currentSubmission;
-    if (choice && ["RED", "BLUE"].includes(choice)) {
-      // Player has submitted — advance the cascade
-      advanceTurn(currentPlayerId, choice, false);
-    }
-  }, [players, currentTurnIndex, gameState.phase]);
-
-  const advanceTurn = async (playerId: string, choice: string, autoAdvanced: boolean) => {
-    if (processingTurnRef.current) return;
-    if (!onUpdateGameState) return;
-    if (currentTurnIndex >= queue.length) return;
-
-    processingTurnRef.current = true;
-
-    const player = alivePlayers.find(p => p.id === playerId);
-    const playerName = player?.name || playerId.substring(0, 6);
-
-    const newFeed = [
-      ...publicFeed,
-      { playerId, playerName, choice, autoAdvanced: autoAdvanced || false },
-    ];
-
-    const nextIndex = currentTurnIndex + 1;
-    const isFinished = nextIndex >= queue.length;
-
-    onUpdateGameState({
-      phase: isFinished ? "locked" : "active",
-      gameSpecificConfig: {
-        ...gsc,
-        publicFeed: newFeed,
-        currentTurnIndex: nextIndex,
-      },
-    } as any);
-
-    // Unlock processing after a short delay to prevent double-fires
-    setTimeout(() => { processingTurnRef.current = false; }, 800);
   };
 
-  // ── GENERATE SIGNALS & QUEUE ──
+  const startAutoAdvance = () => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    setAutoAdvancing(true);
+    advanceBatch();
+    intervalRef.current = setInterval(advanceBatch, batchIntervalSec * 1000);
+  };
+
+  const stopAutoAdvance = () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    setAutoAdvancing(false);
+  };
+
   const handleGenerateGame = () => {
     if (!onUpdateGameState) return;
 
@@ -117,48 +131,17 @@ export default function GameB8Admin({ gameState, players, onUpdateGameState }: P
         trueMajority: actualMajority,
         bias: redBias,
         publicFeed: [],
-        currentTurnIndex: 0,
+        currentBatchIndex: 0,
+        totalBatches: Math.ceil(newQueue.length / BATCH_SIZE),
       },
     } as any);
   };
 
-  // ── START GAME ──
   const handleStartGame = () => {
     if (!onUpdateGameState || queue.length === 0) return;
-    processingTurnRef.current = false;
     onUpdateGameState({ phase: "active" } as any);
   };
 
-  // ── MANUAL SKIP ──
-  const handleManualAdvance = async () => {
-    if (!onUpdateGameState || currentTurnIndex >= queue.length) return;
-
-    const stuckPlayerId = queue[currentTurnIndex];
-    const defaultChoice = signals[stuckPlayerId] || "RED";
-
-    // Update player doc directly
-    await updateDoc(doc(db, "players", stuckPlayerId), { currentSubmission: defaultChoice });
-
-    const stuckPlayer = alivePlayers.find(p => p.id === stuckPlayerId);
-    const newFeed = [
-      ...publicFeed,
-      { playerId: stuckPlayerId, playerName: stuckPlayer?.name || stuckPlayerId, choice: defaultChoice, autoAdvanced: true },
-    ];
-
-    const nextIndex = currentTurnIndex + 1;
-    const isFinished = nextIndex >= queue.length;
-
-    onUpdateGameState({
-      phase: isFinished ? "locked" : "active",
-      gameSpecificConfig: {
-        ...gsc,
-        publicFeed: newFeed,
-        currentTurnIndex: nextIndex,
-      },
-    } as any);
-  };
-
-  // ── REVEAL ──
   const handleReveal = async () => {
     if (!onUpdateGameState) return;
 
@@ -167,7 +150,6 @@ export default function GameB8Admin({ gameState, players, onUpdateGameState }: P
     const batch = writeBatch(db);
 
     alivePlayers.forEach(p => {
-      // Only eliminate players who WERE in the cascade queue
       if (queue.includes(p.id)) {
         const choice = p.currentSubmission;
         const isRight = choice === trueMajority;
@@ -178,7 +160,6 @@ export default function GameB8Admin({ gameState, players, onUpdateGameState }: P
           pointsDelta: isRight ? 20 : -20,
         });
       } else {
-        // Players not in cascade are safe
         pointsDeltaMap[p.id] = 0;
       }
     });
@@ -197,12 +178,10 @@ export default function GameB8Admin({ gameState, players, onUpdateGameState }: P
     } as any);
   };
 
-  const currentActiveName = alivePlayers.find(p => p.id === queue[currentTurnIndex])?.name || queue[currentTurnIndex] || "—";
+  const currentProcessedCount = publicFeed.length;
   const redInFeed = publicFeed.filter(f => f.choice === "RED").length;
   const blueInFeed = publicFeed.filter(f => f.choice === "BLUE").length;
-  const pendingCount = queue.length - currentTurnIndex;
 
-  // ── LOBBY ──
   if (isLobby) {
     return (
       <div className="w-full space-y-6 border border-secondary/40 bg-secondary/5 p-6">
@@ -228,11 +207,6 @@ export default function GameB8Admin({ gameState, players, onUpdateGameState }: P
           <input type="number" min="0" max={alivePlayers.length} value={sequenceLength}
             onChange={e => setSequenceLength(+e.target.value)}
             className="w-full bg-background border border-border px-3 py-2 text-sm outline-none focus:border-secondary" />
-          <p className="text-[10px] text-textMuted">
-            {sequenceLength === 0
-              ? `All ${alivePlayers.length} players will vote in random order`
-              : `${Math.min(sequenceLength, alivePlayers.length)} players will be in the cascade`}
-          </p>
         </div>
 
         <button onClick={handleGenerateGame}
@@ -257,12 +231,12 @@ export default function GameB8Admin({ gameState, players, onUpdateGameState }: P
               <p className="text-xs text-center text-textMuted">
                 True Majority: <span className={`font-bold ${trueMajority === "RED" ? "text-primary" : "text-blue-400"}`}>{trueMajority}</span>
               </p>
-              <p className="text-[10px] text-textMuted text-center mt-1">{queue.length} players in cascade</p>
+              <p className="text-[10px] text-textMuted text-center mt-1">{queue.length} players · {totalBatches} batches of {BATCH_SIZE}</p>
             </div>
 
             <button onClick={handleStartGame}
               className="w-full py-4 bg-primary/20 border border-primary text-primary uppercase tracking-widest font-bold hover:bg-primary hover:text-white transition-colors shadow-glow-red">
-              START CASCADE →
+              START CASCADE
             </button>
           </div>
         )}
@@ -270,7 +244,6 @@ export default function GameB8Admin({ gameState, players, onUpdateGameState }: P
     );
   }
 
-  // ── ACTIVE / LOCKED ──
   return (
     <div className="w-full space-y-4">
       <div className="border border-border bg-surface p-4 grid grid-cols-4 gap-4 text-center text-xs">
@@ -280,7 +253,7 @@ export default function GameB8Admin({ gameState, players, onUpdateGameState }: P
         </div>
         <div>
           <p className="text-[10px] text-textMuted uppercase mb-1">Progress</p>
-          <p className="text-xl font-mono">{currentTurnIndex}/{queue.length}</p>
+          <p className="text-xl font-mono">{currentProcessedCount}/{queue.length}</p>
         </div>
         <div>
           <p className="text-[10px] text-primary uppercase mb-1">RED votes</p>
@@ -292,22 +265,69 @@ export default function GameB8Admin({ gameState, players, onUpdateGameState }: P
         </div>
       </div>
 
-      {isActive && currentTurnIndex < queue.length && (
-        <div className="border border-secondary bg-secondary/10 p-4 flex justify-between items-center">
-          <div>
-            <p className="text-[10px] text-textMuted uppercase tracking-widest mb-1">Current Turn</p>
-            <p className="text-secondary font-bold uppercase tracking-widest">#{currentTurnIndex + 1} — {currentActiveName}</p>
+      {isActive && (
+        <div className="border border-border bg-surface p-4 space-y-3">
+          <div className="flex justify-between items-center">
+            <span className="text-[10px] text-textMuted uppercase tracking-widest">Batch Progress</span>
+            <span className="text-xs font-mono">Batch {currentBatchIndex + 1} / {totalBatches}</span>
           </div>
-          <button onClick={handleManualAdvance}
-            className="px-4 py-2 border border-primary text-primary text-xs uppercase tracking-widest hover:bg-primary hover:text-white transition-colors">
-            Skip / Auto-Advance
-          </button>
-        </div>
-      )}
+          <div className="w-full h-2 bg-background border border-border overflow-hidden">
+            <motion.div
+              className="h-full bg-secondary"
+              animate={{ width: `${(currentProcessedCount / Math.max(queue.length, 1)) * 100}%` }}
+              transition={{ duration: 0.5 }}
+            />
+          </div>
 
-      {isActive && currentTurnIndex >= queue.length && (
-        <div className="border border-secondary bg-secondary/10 p-4 text-center">
-          <p className="text-secondary font-bold uppercase tracking-widest">All players have voted — click below to reveal</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <label className="text-[10px] text-textMuted uppercase tracking-widest block">Batch Interval (sec)</label>
+              <input
+                type="number"
+                min="1"
+                max="30"
+                value={batchIntervalSec}
+                onChange={e => setBatchIntervalSec(Math.max(1, parseInt(e.target.value) || 2))}
+                className="w-full bg-background border border-border px-3 py-2 text-sm outline-none focus:border-secondary"
+                disabled={autoAdvancing}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] text-textMuted uppercase tracking-widest block">Players/Batch</label>
+              <div className="bg-background border border-border px-3 py-2 text-sm text-textMuted">{BATCH_SIZE} (fixed)</div>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            {!autoAdvancing ? (
+              <button
+                onClick={startAutoAdvance}
+                className="flex-1 py-3 bg-secondary text-background font-bold uppercase tracking-widest text-xs hover:bg-white transition-colors shadow-glow-gold"
+              >
+                START AUTO CASCADE ({batchIntervalSec}s/batch)
+              </button>
+            ) : (
+              <button
+                onClick={stopAutoAdvance}
+                className="flex-1 py-3 bg-primary text-white font-bold uppercase tracking-widest text-xs hover:bg-primary/80 transition-colors shadow-glow-red"
+              >
+                STOP CASCADE
+              </button>
+            )}
+            <button
+              onClick={advanceBatch}
+              disabled={advancing || isLocked}
+              className="px-4 py-3 border border-border text-textMuted uppercase tracking-widest text-xs hover:border-secondary hover:text-secondary transition-colors disabled:opacity-40"
+            >
+              {advancing ? "..." : "+1 Batch"}
+            </button>
+          </div>
+
+          {lastBatchResult && (
+            <p className="text-[10px] text-textMuted text-center">
+              Last: batch {lastBatchResult.currentBatchIndex + 1} → {lastBatchResult.nextBatchIndex}, {lastBatchResult.processedCount} players, phase: {lastBatchResult.phase}
+            </p>
+          )}
         </div>
       )}
 
@@ -315,8 +335,16 @@ export default function GameB8Admin({ gameState, players, onUpdateGameState }: P
         <div className="border border-border bg-surface p-4 space-y-2">
           <p className="text-[10px] text-textMuted uppercase tracking-widest">Cascade Vote Split</p>
           <div className="flex h-6 w-full overflow-hidden border border-border">
-            <motion.div className="h-full bg-primary" animate={{ width: `${(redInFeed / Math.max(redInFeed + blueInFeed, 1)) * 100}%` }} transition={{ duration: 0.4 }} />
-            <motion.div className="h-full bg-blue-500" animate={{ width: `${(blueInFeed / Math.max(redInFeed + blueInFeed, 1)) * 100}%` }} transition={{ duration: 0.4 }} />
+            <motion.div
+              className="h-full bg-primary"
+              animate={{ width: `${(redInFeed / Math.max(redInFeed + blueInFeed, 1)) * 100}%` }}
+              transition={{ duration: 0.4 }}
+            />
+            <motion.div
+              className="h-full bg-blue-500"
+              animate={{ width: `${(blueInFeed / Math.max(redInFeed + blueInFeed, 1)) * 100}%` }}
+              transition={{ duration: 0.4 }}
+            />
           </div>
           <div className="flex justify-between text-xs">
             <span className="text-primary">{redInFeed} RED ({Math.round((redInFeed / Math.max(redInFeed + blueInFeed, 1)) * 100)}%)</span>
@@ -328,20 +356,17 @@ export default function GameB8Admin({ gameState, players, onUpdateGameState }: P
       <div className="border border-border bg-surface p-4 max-h-52 overflow-y-auto space-y-1">
         <p className="text-[10px] text-textMuted uppercase tracking-widest mb-2">Decision Log</p>
         {publicFeed.length === 0 && (
-          <p className="text-textMuted/50 text-center text-xs py-4 italic">Waiting for first vote...</p>
+          <p className="text-textMuted/50 text-center text-xs py-4 italic">Waiting for first batch...</p>
         )}
-        {publicFeed.map((f, i) => (
-          <div key={i} className="flex justify-between items-center p-2 border-b border-border/30 text-xs font-mono">
-            <span className="text-textMuted">#{i + 1} {f.playerName}{f.autoAdvanced ? " ⚡" : ""}</span>
-            <span className={`font-bold ${f.choice === "RED" ? "text-primary" : "text-blue-400"}`}>{f.choice}</span>
-          </div>
-        ))}
-        {isActive && currentTurnIndex < queue.length && (
-          <div className="flex justify-between items-center p-2 text-xs font-mono text-secondary animate-pulse">
-            <span>#{currentTurnIndex + 1} {currentActiveName}</span>
-            <span>Deciding...</span>
-          </div>
-        )}
+        {publicFeed.slice(-50).map((f, i) => {
+          const globalIdx = publicFeed.length - 50 + i;
+          return (
+            <div key={globalIdx} className="flex justify-between items-center p-2 border-b border-border/30 text-xs font-mono">
+              <span className="text-textMuted">#{globalIdx + 1} <span className="opacity-40">{f.playerId?.substring(0, 6)}</span>{f.autoAdvanced ? " ⚡" : ""}</span>
+              <span className={`font-bold ${f.choice === "RED" ? "text-primary" : "text-blue-400"}`}>{f.choice}</span>
+            </div>
+          );
+        })}
       </div>
 
       {isLocked && (

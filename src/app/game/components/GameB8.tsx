@@ -1,6 +1,6 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useEffect } from "react";
+import { motion } from "framer-motion";
 
 interface GameB8Props {
   onSubmit: (val: any) => void;
@@ -12,57 +12,42 @@ interface GameB8Props {
   gameState: any;
 }
 
-export default function GameB8({ onSubmit, isLocked, currentSubmission, results, playerId, timeLeft, gameState }: GameB8Props) {
-  const [showConfirm, setShowConfirm] = useState<"RED" | "BLUE" | null>(null);
-  const [submitted, setSubmitted] = useState(false);
-  const autoSubmitRef = useRef<NodeJS.Timeout | null>(null);
+const BATCH_SIZE = 20;
 
+export default function GameB8({ onSubmit, isLocked, currentSubmission, results, playerId, timeLeft, gameState }: GameB8Props) {
   const gsc = gameState?.gameSpecificConfig || {};
   const queue: string[] = gsc.queue || [];
   const signals: Record<string, string> = gsc.signals || {};
   const publicFeed: any[] = gsc.publicFeed || [];
-  const currentTurnIndex: number = gsc.currentTurnIndex ?? 0;
+  const currentBatchIndex: number = gsc.currentBatchIndex ?? 0;
   const trueMajority: string = gsc.trueMajority || "";
+  const phase = gameState?.phase;
 
   const mySignal = signals[playerId];
   const myQueueIndex = queue.indexOf(playerId);
-  const isMyTurn = myQueueIndex === currentTurnIndex && gameState?.phase === "active";
-  const myTurnHasPassed = myQueueIndex !== -1 && myQueueIndex < currentTurnIndex;
+  const myBatchIndex = Math.floor(myQueueIndex / BATCH_SIZE);
   const inQueue = myQueueIndex !== -1;
 
-  // Reset submitted state when turn advances
-  useEffect(() => {
-    if (isMyTurn) {
-      setSubmitted(false);
-    }
-  }, [currentTurnIndex]);
+  const totalBatches = Math.ceil(queue.length / BATCH_SIZE);
+  const myBatchStart = myBatchIndex * BATCH_SIZE;
+  const myBatchEnd = Math.min(myBatchStart + BATCH_SIZE, queue.length);
 
-  // Clear confirm on turn change
-  useEffect(() => {
-    setShowConfirm(null);
-  }, [currentTurnIndex]);
+  const feedUpToMyBatch = publicFeed.filter((_, i) => {
+    const batchIdx = Math.floor(i / BATCH_SIZE);
+    return batchIdx < myBatchIndex;
+  });
 
-  // Auto-submit signal when timer expires
-  useEffect(() => {
-    if (timeLeft === 0 && isMyTurn && !submitted && mySignal) {
-      autoSubmitRef.current = setTimeout(() => {
-        onSubmit(mySignal);
-        setSubmitted(true);
-      }, 500);
-    }
-    return () => {
-      if (autoSubmitRef.current) clearTimeout(autoSubmitRef.current);
-    };
-  }, [timeLeft, isMyTurn, submitted, mySignal, onSubmit]);
+  const myBatchFeed = publicFeed.filter((_, i) => {
+    const batchIdx = Math.floor(i / BATCH_SIZE);
+    return batchIdx === myBatchIndex;
+  });
 
-  const handleChoice = (choice: "RED" | "BLUE") => {
-    if (!isMyTurn || submitted || gameState?.phase !== "active") return;
-    onSubmit(choice);
-    setSubmitted(true);
-  };
+  const isMyBatchProcessed = myBatchFeed.length > 0;
+  const redInFeed = publicFeed.filter(f => f.choice === "RED").length;
+  const blueInFeed = publicFeed.filter(f => f.choice === "BLUE").length;
+  const totalProcessed = publicFeed.length;
 
-  // ── REVEAL ──
-  if (gameState?.phase === "reveal" && results) {
+  if (phase === "reveal" && results) {
     const isEliminated = results.eliminatedPlayerIds?.includes(playerId);
 
     return (
@@ -93,8 +78,7 @@ export default function GameB8({ onSubmit, isLocked, currentSubmission, results,
     );
   }
 
-  // ── LOBBY ──
-  if (gameState?.phase === "lobby") {
+  if (phase === "lobby") {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4 font-mono text-center">
         <div className="w-8 h-8 border-2 border-secondary border-t-transparent rounded-full animate-spin" />
@@ -103,7 +87,6 @@ export default function GameB8({ onSubmit, isLocked, currentSubmission, results,
     );
   }
 
-  // ── NOT IN QUEUE ──
   if (!inQueue) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4 font-mono text-center">
@@ -114,18 +97,15 @@ export default function GameB8({ onSubmit, isLocked, currentSubmission, results,
     );
   }
 
-  // ── MAIN GAME ──
   return (
     <div className="w-full max-w-md mx-auto space-y-6 mt-4 pb-12 font-mono">
-      {/* Header */}
       <div className="text-center space-y-2 mb-6">
         <p className="text-secondary text-sm uppercase tracking-widest font-bold">Information Cascade</p>
         <p className="text-xs text-textMuted leading-relaxed px-4">
-          Trust your private signal — or follow the crowd. Choose which color is the <em>majority signal</em>.
+          Your private signal is revealed. Watch others decide — then decide yourself.
         </p>
       </div>
 
-      {/* Private Signal */}
       {mySignal && (
         <div className={`p-5 border-2 bg-surface text-center ${mySignal === "RED" ? "border-primary" : "border-blue-500"}`}>
           <p className="text-[10px] text-textMuted uppercase tracking-widest mb-1">Your Private Signal</p>
@@ -134,40 +114,36 @@ export default function GameB8({ onSubmit, isLocked, currentSubmission, results,
         </div>
       )}
 
-      {/* Public Decision Log */}
       <div className="border border-border bg-surface p-4">
-        <p className="text-[10px] uppercase tracking-widest text-textMuted mb-3">Public Decision Log</p>
+        <div className="flex justify-between items-center mb-3">
+          <p className="text-[10px] uppercase tracking-widest text-textMuted">Cascade Feed</p>
+          <p className="text-[10px] font-mono text-textMuted">{totalProcessed}/{queue.length} decided</p>
+        </div>
 
-        {/* Live vote bar */}
         {publicFeed.length > 0 && (
           <div className="mb-4 space-y-1">
             <div className="flex justify-between text-xs">
-              <span className="text-primary">
-                {publicFeed.filter(f => f.choice === "RED").length} RED
-              </span>
-              <span className="text-blue-400">
-                {publicFeed.filter(f => f.choice === "BLUE").length} BLUE
-              </span>
+              <span className="text-primary">{redInFeed} RED</span>
+              <span className="text-blue-400">{blueInFeed} BLUE</span>
             </div>
             <div className="w-full h-3 bg-background flex overflow-hidden border border-border">
               <motion.div
                 className="h-full bg-primary"
-                animate={{ width: `${(publicFeed.filter(f => f.choice === "RED").length / publicFeed.length) * 100}%` }}
+                animate={{ width: `${(redInFeed / Math.max(publicFeed.length, 1)) * 100}%` }}
                 transition={{ duration: 0.5 }}
               />
               <motion.div
                 className="h-full bg-blue-500"
-                animate={{ width: `${(publicFeed.filter(f => f.choice === "BLUE").length / publicFeed.length) * 100}%` }}
+                animate={{ width: `${(blueInFeed / Math.max(publicFeed.length, 1)) * 100}%` }}
                 transition={{ duration: 0.5 }}
               />
             </div>
           </div>
         )}
 
-        {/* Feed entries */}
         <div className="space-y-1 max-h-44 overflow-y-auto pr-1">
           {publicFeed.length === 0 && (
-            <p className="text-textMuted/50 text-center text-xs py-6 italic">No decisions made yet.</p>
+            <p className="text-textMuted/50 text-center text-xs py-6 italic">Waiting for cascade to begin...</p>
           )}
           {publicFeed.map((f, i) => (
             <motion.div
@@ -176,105 +152,50 @@ export default function GameB8({ onSubmit, isLocked, currentSubmission, results,
               animate={{ opacity: 1, x: 0 }}
               className="flex justify-between items-center p-2 border-b border-border/30 text-xs"
             >
-              <span className="text-textMuted">#{i + 1} <span className="opacity-40">{f.playerName}</span></span>
+              <span className="text-textMuted">#{i + 1} <span className="opacity-40">{f.playerId?.substring(0, 6)}</span></span>
               <span className={`font-bold ${f.choice === "RED" ? "text-primary" : "text-blue-400"}`}>{f.choice}</span>
             </motion.div>
           ))}
 
-          {/* Currently deciding */}
-          {gameState?.phase === "active" && currentTurnIndex < queue.length && (
+          {phase === "active" && (
             <div className="flex justify-between items-center p-2 border border-secondary/40 border-dashed bg-secondary/5 text-secondary text-xs animate-pulse mt-1">
-              <span>#{currentTurnIndex + 1} {isMyTurn ? "YOU" : "Player"}</span>
-              <span>Deciding...</span>
+              <span>Batch {currentBatchIndex + 1}/{totalBatches} — {myBatchStart + 1}-{myBatchEnd} deciding...</span>
             </div>
           )}
         </div>
       </div>
 
-      {/* Interaction Block */}
-      <div className="border-t border-border pt-4">
-        {myTurnHasPassed ? (
-          <div className="p-5 border border-border bg-surface text-center space-y-2">
-            <p className="text-xs uppercase tracking-widest text-textMuted">Your decision is recorded.</p>
-            <p className={`text-3xl font-bold ${currentSubmission === "RED" ? "text-primary" : "text-blue-400"}`}>{currentSubmission}</p>
-            <p className="text-[10px] text-textMuted uppercase">Waiting for remaining players...</p>
+      <div className="border-t border-border pt-4 space-y-3">
+        <div className="text-center space-y-1">
+          <p className="text-xs uppercase tracking-widest text-textMuted">Your Position</p>
+          <p className="text-xl font-bold font-mono text-textDefault">#{myQueueIndex + 1} of {queue.length}</p>
+          <p className="text-[10px] text-textMuted">Batch {myBatchIndex + 1} of {totalBatches}</p>
+        </div>
+
+        {isMyBatchProcessed ? (
+          <div className={`p-5 border text-center space-y-2 ${mySignal === "RED" ? "border-primary bg-primary/10" : "border-blue-500 bg-blue-900/10"}`}>
+            <p className="text-xs uppercase tracking-widest text-textMuted">Your decision is recorded</p>
+            <p className={`text-3xl font-bold ${mySignal === "RED" ? "text-primary" : "text-blue-400"}`}>{mySignal}</p>
+            <p className="text-[10px] text-textMuted uppercase">Waiting for remaining batches...</p>
           </div>
-        ) : isMyTurn ? (
-          <div className="space-y-4">
-            <p className="text-center text-sm uppercase tracking-widest text-secondary font-bold animate-pulse">
-              ▶ It is your turn — choose now
-            </p>
-            {timeLeft !== null && (
-              <div className={`text-center text-xs uppercase tracking-widest border p-2 ${timeLeft <= 5 ? "text-primary border-primary/40 bg-primary/5 animate-pulse" : "text-textMuted border-border"}`}>
-                {timeLeft}s — auto-submits your signal if time runs out
-              </div>
-            )}
-            <div className="flex gap-4">
-              <button
-                onClick={() => handleChoice("RED")}
-                disabled={submitted}
-                className="flex-1 bg-primary/20 border-2 border-primary text-primary hover:bg-primary hover:text-white py-8 text-2xl tracking-widest font-bold transition-all shadow-[0_0_20px_rgba(255,0,0,0.2)] disabled:opacity-40"
-              >
-                RED
-              </button>
-              <button
-                onClick={() => handleChoice("BLUE")}
-                disabled={submitted}
-                className="flex-1 bg-blue-500/20 border-2 border-blue-500 text-blue-400 hover:bg-blue-500 hover:text-white py-8 text-2xl tracking-widest font-bold transition-all shadow-[0_0_20px_rgba(59,130,246,0.2)] disabled:opacity-40"
-              >
-                BLUE
-              </button>
-            </div>
+        ) : myBatchIndex > 0 && feedUpToMyBatch.length === 0 ? (
+          <div className="p-5 border border-border bg-surface text-center space-y-2">
+            <p className="text-xs uppercase tracking-widest text-textMuted">Waiting for your batch</p>
+            <p className="text-[10px] text-textMuted">Previous batches must finish first. Watch the cascade unfold.</p>
           </div>
         ) : (
-          <div className="p-6 border border-border bg-surface text-center space-y-2">
-            <p className="text-xs uppercase tracking-widest text-textMuted">Waiting for your turn</p>
-            <p className="text-xl font-bold font-mono text-textDefault">Queue Position: #{myQueueIndex + 1}</p>
-            <p className="text-[10px] text-textMuted">
-              {currentTurnIndex < myQueueIndex ? `${myQueueIndex - currentTurnIndex} players before you` : "Your turn is next!"}
-            </p>
+          <div className="p-5 border border-border bg-surface text-center space-y-2">
+            <p className="text-xs uppercase tracking-widest text-textMuted">Your batch is next</p>
+            <p className="text-[10px] text-textMuted">Watch the decisions above, then your batch processes automatically.</p>
           </div>
         )}
       </div>
 
-      {/* Confirm Overlay */}
-      <AnimatePresence>
-        {showConfirm && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-4 backdrop-blur-sm"
-          >
-            <div className="max-w-sm w-full bg-surface border-2 border-secondary p-8 space-y-8 text-center">
-              <h3 className="font-serif text-2xl uppercase tracking-widest text-white">Lock in your choice?</h3>
-              <div className="space-y-2">
-                <p className="text-textMuted text-sm">You believe the majority is</p>
-                <p className={`text-6xl font-bold font-mono tracking-widest ${showConfirm === "RED" ? "text-primary" : "text-blue-400"}`}>
-                  {showConfirm}
-                </p>
-                <p className="text-primary text-[10px] uppercase tracking-widest mt-4">
-                  This will be visible to everyone who votes after you.
-                </p>
-              </div>
-              <div className="flex gap-4">
-                <button
-                  onClick={() => setShowConfirm(null)}
-                  className="flex-1 border border-border bg-background py-3 uppercase tracking-widest text-xs hover:bg-border transition"
-                >
-                  Change
-                </button>
-                <button
-                  onClick={() => { setShowConfirm(null); handleChoice(showConfirm); }}
-                  className={`flex-1 text-white py-3 uppercase tracking-widest text-xs font-bold transition ${showConfirm === "RED" ? "bg-primary hover:bg-primary/80" : "bg-blue-500 hover:bg-blue-500/80"}`}
-                >
-                  Confirm
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {timeLeft !== null && (
+        <div className={`text-center text-xs uppercase tracking-widest border p-2 ${timeLeft <= 10 ? "text-primary border-primary/40 bg-primary/5 animate-pulse" : "text-textMuted border-border"}`}>
+          {timeLeft}s remaining
+        </div>
+      )}
     </div>
   );
 }

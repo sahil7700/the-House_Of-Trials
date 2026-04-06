@@ -1,8 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { GameState } from "@/lib/services/game-service";
 import { PlayerData } from "@/lib/services/player-service";
-import { db } from "@/lib/firebase";
-import { doc, writeBatch } from "firebase/firestore";
 import { motion } from "framer-motion";
 
 interface Props {
@@ -11,369 +9,459 @@ interface Props {
   onUpdateGameState?: (update: Partial<GameState>) => void;
 }
 
-const BATCH_SIZE = 20;
-
 export default function GameB8Admin({ gameState, players, onUpdateGameState }: Props) {
+  const b8Config: any = (gameState as any).b8Config || {};
+  const b8Results: any = (gameState as any).b8Results || null;
+  const phase = (gameState as any).phase || gameState.phase;
+  const b8RevealStep: number = (gameState as any).b8RevealStep || 0;
+  const pendingEliminations: string[] = (gameState as any).pendingEliminations || [];
+  const votingStartedAt: any = (gameState as any).votingStartedAt;
+  const confidenceStartedAt: any = (gameState as any).confidenceStartedAt;
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [correctAnswer, setCorrectAnswer] = useState(b8Config.correctAnswer || "A");
+  const [optionALabel, setOptionALabel] = useState(b8Config.optionALabel || "Option A");
+  const [optionBLabel, setOptionBLabel] = useState(b8Config.optionBLabel || "Option B");
+  const [imageFlashSeconds, setImageFlashSeconds] = useState(b8Config.imageFlashSeconds || 3);
+  const [votingSeconds, setVotingSeconds] = useState(b8Config.votingSeconds || 7);
+  const [confidenceEnabled, setConfidenceEnabled] = useState(b8Config.confidenceEnabled ?? true);
+  const [confidenceSeconds, setConfidenceSeconds] = useState(b8Config.confidenceSeconds || 5);
+  const [fakeMajorityEnabled, setFakeMajorityEnabled] = useState(b8Config.fakeMajorityEnabled ?? true);
+  const [fakeMajorityBiasToward, setFakeMajorityBiasToward] = useState(b8Config.fakeMajorityBiasToward || "A");
+  const [fakeMajorityStartPercent, setFakeMajorityStartPercent] = useState(b8Config.fakeMajorityStartPercent || 72);
+
   const alivePlayers = players.filter(p => p.status === "alive");
-  const gsc = (gameState as any).gameSpecificConfig || {};
-  const queue: string[] = gsc.queue || [];
-  const signals: Record<string, string> = gsc.signals || {};
-  const publicFeed: any[] = gsc.publicFeed || [];
-  const currentBatchIndex: number = gsc.currentBatchIndex ?? 0;
-  const trueMajority: string = gsc.trueMajority || "UNKNOWN";
-  const isLobby = gameState.phase === "lobby";
-  const isActive = gameState.phase === "active";
-  const isLocked = gameState.phase === "locked";
+  const votedCount = players.filter(p => p.currentSubmission !== null && p.currentSubmission !== undefined && p.status === "alive").length;
+  const votesA = players.filter(p => p.currentSubmission === "A" && p.status === "alive").length;
+  const votesB = players.filter(p => p.currentSubmission === "B" && p.status === "alive").length;
+  const notVoted = alivePlayers.length - votedCount;
 
-  const [redBias, setRedBias] = useState(60);
-  const [sequenceLength, setSequenceLength] = useState(0);
-  const [autoAdvancing, setAutoAdvancing] = useState(false);
-  const [advancing, setAdvancing] = useState(false);
-  const [batchIntervalSec, setBatchIntervalSec] = useState(2);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const [lastBatchResult, setLastBatchResult] = useState<any>(null);
+  const isLobby = phase === "lobby";
+  const isImageFlash = phase === "image_flash";
+  const isVotingOpen = phase === "voting_open";
+  const isVotingLocked = phase === "voting_locked";
+  const isConfidence = phase === "confidence";
+  const isConfidenceLocked = phase === "confidence_locked";
+  const isReveal = phase === "reveal";
+  const isConfirmed = phase === "confirmed";
 
-  const totalBatches = Math.ceil(queue.length / BATCH_SIZE);
+  const [votingRemaining, setVotingRemaining] = useState<number | null>(null);
+  const [flashRemaining, setFlashRemaining] = useState<number | null>(null);
+  const [confidenceRemaining, setConfidenceRemaining] = useState<number | null>(null);
 
   useEffect(() => {
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+    if (!isVotingOpen || !votingStartedAt) return;
+    const update = () => {
+      const start = votingStartedAt?.toDate?.()?.getTime() || Date.now();
+      const remaining = Math.max(0, votingSeconds - Math.floor((Date.now() - start) / 1000));
+      setVotingRemaining(remaining);
     };
-  }, []);
+    update();
+    const interval = setInterval(update, 500);
+    return () => clearInterval(interval);
+  }, [isVotingOpen, votingStartedAt, votingSeconds]);
 
-  const advanceBatch = async () => {
-    if (advancing || isLocked || !onUpdateGameState) return;
-    setAdvancing(true);
+  useEffect(() => {
+    if (!isImageFlash) return;
+    const update = () => {
+      const start = (gameState as any).imageFlashStartedAt?.toDate?.()?.getTime() || Date.now();
+      const remaining = Math.max(0, imageFlashSeconds - Math.floor((Date.now() - start) / 1000));
+      setFlashRemaining(remaining);
+    };
+    update();
+    const interval = setInterval(update, 500);
+    return () => clearInterval(interval);
+  }, [isImageFlash, imageFlashSeconds, gameState]);
+
+  useEffect(() => {
+    if (!isConfidence || !confidenceStartedAt) return;
+    const update = () => {
+      const start = confidenceStartedAt?.toDate?.()?.getTime() || Date.now();
+      const remaining = Math.max(0, confidenceSeconds - Math.floor((Date.now() - start) / 1000));
+      setConfidenceRemaining(remaining);
+    };
+    update();
+    const interval = setInterval(update, 500);
+    return () => clearInterval(interval);
+  }, [isConfidence, confidenceStartedAt, confidenceSeconds]);
+
+  const getConfig = () => ({
+    correctAnswer,
+    optionALabel,
+    optionBLabel,
+    imageFlashSeconds,
+    votingSeconds,
+    confidenceEnabled,
+    confidenceSeconds,
+    fakeMajorityEnabled,
+    fakeMajorityBiasToward,
+    fakeMajorityStartPercent,
+  });
+
+  const handleStartFlash = async () => {
+    setLoading(true);
     try {
-      const res = await fetch("/api/game/b8-batch-advance", {
+      const res = await fetch("/api/game/b8/start-flash", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          gameId: "B8",
-          gameSpecificConfig: {
-            ...gsc,
-            phase: gameState.phase,
-          },
-        }),
+        body: JSON.stringify({ slotNumber: gameState.currentSlot, config: getConfig() }),
       });
       const data = await res.json();
-      setLastBatchResult(data);
-
-      if (data.done) {
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
-        }
-        setAutoAdvancing(false);
-        if (onUpdateGameState) {
-          onUpdateGameState({ phase: "locked" } as any);
-        }
-      } else {
-        if (onUpdateGameState) {
-          onUpdateGameState({
-            phase: "active",
-            gameSpecificConfig: {
-              ...gsc,
-              publicFeed: publicFeed,
-              currentBatchIndex: data.nextBatchIndex,
-              phase: "active",
-            },
-          } as any);
-        }
-      }
-    } catch (e) {
-      console.error("Batch advance failed:", e);
-    } finally {
-      setAdvancing(false);
-    }
+      if (!res.ok) throw new Error(data.error);
+      onUpdateGameState?.({
+        phase: "image_flash",
+        b8Config: getConfig(),
+        imageFlashStartedAt: new Date(),
+      } as any);
+    } catch (e: any) { setError(e.message); }
+    finally { setLoading(false); }
   };
 
-  const startAutoAdvance = () => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    setAutoAdvancing(true);
-    advanceBatch();
-    intervalRef.current = setInterval(advanceBatch, batchIntervalSec * 1000);
+  const handleOpenVoting = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/game/b8/open-voting", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slotNumber: gameState.currentSlot }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      onUpdateGameState?.({
+        phase: "voting_open",
+        votingStartedAt: new Date(),
+      } as any);
+    } catch (e: any) { setError(e.message); }
+    finally { setLoading(false); }
   };
 
-  const stopAutoAdvance = () => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    setAutoAdvancing(false);
+  const handleLockVotes = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/game/b8/lock-votes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slotNumber: gameState.currentSlot, confidenceEnabled }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      onUpdateGameState?.({
+        phase: data.phase,
+        ...(data.phase === "confidence" ? { confidenceStartedAt: new Date() } : {}),
+      } as any);
+    } catch (e: any) { setError(e.message); }
+    finally { setLoading(false); }
   };
 
-  const handleGenerateGame = () => {
-    if (!onUpdateGameState) return;
+  const handleLockConfidence = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/game/b8/lock-confidence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slotNumber: gameState.currentSlot }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      onUpdateGameState?.({ phase: "confidence_locked" } as any);
+    } catch (e: any) { setError(e.message); }
+    finally { setLoading(false); }
+  };
 
-    const shuffled = [...alivePlayers].sort(() => Math.random() - 0.5);
-    const participants = sequenceLength > 0
-      ? shuffled.slice(0, Math.min(sequenceLength, shuffled.length))
-      : shuffled;
+  const handleCalculate = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/game/b8/calculate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slotNumber: gameState.currentSlot, gameState }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      onUpdateGameState?.({
+        phase: "reveal",
+        b8RevealStep: 0,
+        b8Results: {
+          totalVoters: data.votesA + data.votesB,
+          votesA: data.votesA,
+          votesB: data.votesB,
+          correctAnswer: data.correctAnswer,
+          eliminatedCount: data.eliminatedCount,
+          overconfidentCount: data.overconfidentCount,
+        },
+        pendingEliminations: data.eliminatedPlayerIds,
+      } as any);
+    } catch (e: any) { setError(e.message); }
+    finally { setLoading(false); }
+  };
 
-    const newQueue = participants.map(p => p.id);
-    const newSignals: Record<string, string> = {};
-    let redCount = 0;
-
-    participants.forEach(p => {
-      const isRed = Math.random() * 100 < redBias;
-      if (isRed) redCount++;
-      newSignals[p.id] = isRed ? "RED" : "BLUE";
+  const handleRevealStep = async (step: number) => {
+    await fetch("/api/game/b8/reveal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ step }),
     });
-
-    const actualMajority = redCount > participants.length / 2 ? "RED" : "BLUE";
-
-    onUpdateGameState({
-      gameSpecificConfig: {
-        ...gsc,
-        queue: newQueue,
-        signals: newSignals,
-        trueMajority: actualMajority,
-        bias: redBias,
-        publicFeed: [],
-        currentBatchIndex: 0,
-        totalBatches: Math.ceil(newQueue.length / BATCH_SIZE),
-      },
-    } as any);
+    onUpdateGameState?.({ b8RevealStep: step } as any);
   };
 
-  const handleStartGame = () => {
-    if (!onUpdateGameState || queue.length === 0) return;
-    onUpdateGameState({ phase: "active" } as any);
+  const handleConfirm = async () => {
+    setLoading(true);
+    try {
+      await fetch("/api/game/b8/confirm-eliminations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slotNumber: gameState.currentSlot, eliminatedPlayerIds: pendingEliminations }),
+      });
+      onUpdateGameState?.({
+        phase: "confirmed",
+        pendingEliminations: [],
+        b8Config: null,
+        b8Results: null,
+        b8RevealStep: 0,
+      } as any);
+    } catch (e: any) { setError(e.message); }
+    finally { setLoading(false); }
   };
 
-  const handleReveal = async () => {
-    if (!onUpdateGameState) return;
-
-    const eliminatedPlayerIds: string[] = [];
-    const pointsDeltaMap: Record<string, number> = {};
-    const batch = writeBatch(db);
-
-    alivePlayers.forEach(p => {
-      if (queue.includes(p.id)) {
-        const choice = p.currentSubmission;
-        const isRight = choice === trueMajority;
-        if (!isRight) eliminatedPlayerIds.push(p.id);
-        pointsDeltaMap[p.id] = isRight ? 20 : -20;
-        batch.update(doc(db, "players", p.id), {
-          status: isRight ? "alive" : "eliminated",
-          pointsDelta: isRight ? 20 : -20,
-        });
-      } else {
-        pointsDeltaMap[p.id] = 0;
-      }
-    });
-
-    await batch.commit();
-
-    onUpdateGameState({
-      phase: "reveal",
-      results: {
-        trueMajority,
-        eliminatedPlayerIds,
-        pointsDeltaMap,
-        publicFeed,
-        queueLength: queue.length,
-      },
-    } as any);
-  };
-
-  const currentProcessedCount = publicFeed.length;
-  const redInFeed = publicFeed.filter(f => f.choice === "RED").length;
-  const blueInFeed = publicFeed.filter(f => f.choice === "BLUE").length;
-
-  if (isLobby) {
+  if (isConfirmed) {
     return (
-      <div className="w-full space-y-6 border border-secondary/40 bg-secondary/5 p-6">
-        <h3 className="text-sm text-secondary font-bold uppercase tracking-widest">Information Cascade — Setup</h3>
-
-        <div className="space-y-3">
-          <div className="flex justify-between items-center">
-            <span className="text-[10px] text-textMuted uppercase tracking-widest">Signal Distribution</span>
-            <span className="text-[10px] font-mono text-textDefault">{redBias}% RED · {100 - redBias}% BLUE</span>
-          </div>
-          <input type="range" min="10" max="90" step="5" value={redBias} onChange={e => setRedBias(+e.target.value)}
-            className="w-full accent-primary" />
-          <div className="flex justify-between text-xs">
-            <span className="text-primary font-bold">RED ({redBias}%)</span>
-            <span className="text-blue-400 font-bold">BLUE ({100 - redBias}%)</span>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <label className="text-[10px] text-textMuted uppercase tracking-widest block">
-            Cascade Size (0 = all {alivePlayers.length} alive players)
-          </label>
-          <input type="number" min="0" max={alivePlayers.length} value={sequenceLength}
-            onChange={e => setSequenceLength(+e.target.value)}
-            className="w-full bg-background border border-border px-3 py-2 text-sm outline-none focus:border-secondary" />
-        </div>
-
-        <button onClick={handleGenerateGame}
-          className="w-full py-3 bg-secondary/20 border border-secondary text-secondary uppercase tracking-widest text-xs font-bold hover:bg-secondary hover:text-background transition-colors">
-          Generate Signals &amp; Shuffle Queue
-        </button>
-
-        {queue.length > 0 && (
-          <div className="space-y-3">
-            <div className="border border-border bg-surface p-4">
-              <p className="text-[10px] text-textMuted uppercase tracking-widest mb-3">Signal Preview</p>
-              <div className="grid grid-cols-2 gap-2 mb-3 text-center">
-                <div className="border border-primary/40 bg-primary/5 p-3">
-                  <p className="text-primary font-bold text-xl">{Object.values(signals).filter(s => s === "RED").length}</p>
-                  <p className="text-[10px] text-textMuted uppercase">RED signals</p>
-                </div>
-                <div className="border border-blue-500/40 bg-blue-900/10 p-3">
-                  <p className="text-blue-400 font-bold text-xl">{Object.values(signals).filter(s => s === "BLUE").length}</p>
-                  <p className="text-[10px] text-textMuted uppercase">BLUE signals</p>
-                </div>
-              </div>
-              <p className="text-xs text-center text-textMuted">
-                True Majority: <span className={`font-bold ${trueMajority === "RED" ? "text-primary" : "text-blue-400"}`}>{trueMajority}</span>
-              </p>
-              <p className="text-[10px] text-textMuted text-center mt-1">{queue.length} players · {totalBatches} batches of {BATCH_SIZE}</p>
-            </div>
-
-            <button onClick={handleStartGame}
-              className="w-full py-4 bg-primary/20 border border-primary text-primary uppercase tracking-widest font-bold hover:bg-primary hover:text-white transition-colors shadow-glow-red">
-              START CASCADE
-            </button>
-          </div>
-        )}
+      <div className="p-6 text-center space-y-4">
+        <h3 className="text-2xl font-serif text-secondary uppercase tracking-widest">Round Complete</h3>
+        <p className="text-textMuted font-mono">{pendingEliminations.length} eliminated</p>
       </div>
     );
   }
 
   return (
-    <div className="w-full space-y-4">
-      <div className="border border-border bg-surface p-4 grid grid-cols-4 gap-4 text-center text-xs">
-        <div>
-          <p className="text-[10px] text-textMuted uppercase mb-1">True Majority</p>
-          <p className={`text-xl font-bold ${trueMajority === "RED" ? "text-primary" : "text-blue-400"}`}>{trueMajority}</p>
+    <div className="space-y-6 font-mono text-textDefault">
+      {error && (
+        <div className="bg-red-900/50 border border-red-500 text-red-400 p-4 text-sm">
+          Error: {error}
         </div>
-        <div>
-          <p className="text-[10px] text-textMuted uppercase mb-1">Progress</p>
-          <p className="text-xl font-mono">{currentProcessedCount}/{queue.length}</p>
-        </div>
-        <div>
-          <p className="text-[10px] text-primary uppercase mb-1">RED votes</p>
-          <p className="text-xl font-bold text-primary">{redInFeed}</p>
-        </div>
-        <div>
-          <p className="text-[10px] text-blue-400 uppercase mb-1">BLUE votes</p>
-          <p className="text-xl font-bold text-blue-400">{blueInFeed}</p>
-        </div>
-      </div>
+      )}
 
-      {isActive && (
-        <div className="border border-border bg-surface p-4 space-y-3">
-          <div className="flex justify-between items-center">
-            <span className="text-[10px] text-textMuted uppercase tracking-widest">Batch Progress</span>
-            <span className="text-xs font-mono">Batch {currentBatchIndex + 1} / {totalBatches}</span>
-          </div>
-          <div className="w-full h-2 bg-background border border-border overflow-hidden">
-            <motion.div
-              className="h-full bg-secondary"
-              animate={{ width: `${(currentProcessedCount / Math.max(queue.length, 1)) * 100}%` }}
-              transition={{ duration: 0.5 }}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <label className="text-[10px] text-textMuted uppercase tracking-widest block">Batch Interval (sec)</label>
-              <input
-                type="number"
-                min="1"
-                max="30"
-                value={batchIntervalSec}
-                onChange={e => setBatchIntervalSec(Math.max(1, parseInt(e.target.value) || 2))}
-                className="w-full bg-background border border-border px-3 py-2 text-sm outline-none focus:border-secondary"
-                disabled={autoAdvancing}
-              />
+      {isLobby && (
+        <div className="space-y-4 border border-secondary/50 bg-secondary/10 p-6">
+          <h3 className="text-sm uppercase tracking-widest text-secondary font-bold">Information Cascade — Configuration</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] text-textMuted uppercase block mb-1">Correct Answer</label>
+              <div className="flex gap-2">
+                <button onClick={() => setCorrectAnswer("A")}
+                  className={`flex-1 py-2 border text-xs uppercase ${correctAnswer === "A" ? "bg-secondary text-background border-secondary" : "border-border hover:border-secondary"}`}>A</button>
+                <button onClick={() => setCorrectAnswer("B")}
+                  className={`flex-1 py-2 border text-xs uppercase ${correctAnswer === "B" ? "bg-secondary text-background border-secondary" : "border-border hover:border-secondary"}`}>B</button>
+              </div>
             </div>
-            <div className="space-y-2">
-              <label className="text-[10px] text-textMuted uppercase tracking-widest block">Players/Batch</label>
-              <div className="bg-background border border-border px-3 py-2 text-sm text-textMuted">{BATCH_SIZE} (fixed)</div>
+            <div>
+              <label className="text-[10px] text-textMuted uppercase block mb-1">Image Flash (sec)</label>
+              <input type="number" min="1" max="10" value={imageFlashSeconds}
+                onChange={e => setImageFlashSeconds(Number(e.target.value))}
+                className="w-full bg-background border border-border px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="text-[10px] text-textMuted uppercase block mb-1">Voting Window (sec)</label>
+              <input type="number" min="3" max="20" value={votingSeconds}
+                onChange={e => setVotingSeconds(Number(e.target.value))}
+                className="w-full bg-background border border-border px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="text-[10px] text-textMuted uppercase block mb-1">Option A Label</label>
+              <input type="text" value={optionALabel}
+                onChange={e => setOptionALabel(e.target.value)}
+                className="w-full bg-background border border-border px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="text-[10px] text-textMuted uppercase block mb-1">Option B Label</label>
+              <input type="text" value={optionBLabel}
+                onChange={e => setOptionBLabel(e.target.value)}
+                className="w-full bg-background border border-border px-3 py-2 text-sm" />
             </div>
           </div>
 
-          <div className="flex gap-2">
-            {!autoAdvancing ? (
-              <button
-                onClick={startAutoAdvance}
-                className="flex-1 py-3 bg-secondary text-background font-bold uppercase tracking-widest text-xs hover:bg-white transition-colors shadow-glow-gold"
-              >
-                START AUTO CASCADE ({batchIntervalSec}s/batch)
-              </button>
-            ) : (
-              <button
-                onClick={stopAutoAdvance}
-                className="flex-1 py-3 bg-primary text-white font-bold uppercase tracking-widest text-xs hover:bg-primary/80 transition-colors shadow-glow-red"
-              >
-                STOP CASCADE
-              </button>
+          <div className="space-y-2 border-t border-border pt-4">
+            <div className="flex items-center justify-between bg-background border border-border p-3">
+              <label className="text-xs uppercase">Enable Fake Majority Counter</label>
+              <input type="checkbox" checked={fakeMajorityEnabled} onChange={e => setFakeMajorityEnabled(e.target.checked)} className="w-4 h-4" />
+            </div>
+            {fakeMajorityEnabled && (
+              <div className="grid grid-cols-2 gap-3 p-3 bg-background border border-border">
+                <div>
+                  <label className="text-[10px] text-textMuted uppercase block mb-1">Bias Toward</label>
+                  <div className="flex gap-1">
+                    <button onClick={() => setFakeMajorityBiasToward("A")}
+                      className={`flex-1 py-1 border text-xs ${fakeMajorityBiasToward === "A" ? "bg-primary text-white border-primary" : "border-border"}`}>A</button>
+                    <button onClick={() => setFakeMajorityBiasToward("B")}
+                      className={`flex-1 py-1 border text-xs ${fakeMajorityBiasToward === "B" ? "bg-blue-500 text-white border-blue-500" : "border-border"}`}>B</button>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] text-textMuted uppercase block mb-1">Start % for biased</label>
+                  <input type="number" min="55" max="90" value={fakeMajorityStartPercent}
+                    onChange={e => setFakeMajorityStartPercent(Number(e.target.value))}
+                    className="w-full bg-surface border border-border px-2 py-1 text-sm" />
+                </div>
+              </div>
             )}
-            <button
-              onClick={advanceBatch}
-              disabled={advancing || isLocked}
-              className="px-4 py-3 border border-border text-textMuted uppercase tracking-widest text-xs hover:border-secondary hover:text-secondary transition-colors disabled:opacity-40"
-            >
-              {advancing ? "..." : "+1 Batch"}
-            </button>
+            <div className="flex items-center justify-between bg-background border border-border p-3">
+              <label className="text-xs uppercase">Enable Confidence Trap</label>
+              <input type="checkbox" checked={confidenceEnabled} onChange={e => setConfidenceEnabled(e.target.checked)} className="w-4 h-4" />
+            </div>
+            {confidenceEnabled && (
+              <div className="p-3 bg-background border border-border">
+                <label className="text-[10px] text-textMuted uppercase block mb-1">Confidence Window (sec)</label>
+                <input type="number" min="3" max="10" value={confidenceSeconds}
+                  onChange={e => setConfidenceSeconds(Number(e.target.value))}
+                  className="w-full bg-surface border border-border px-3 py-2 text-sm" />
+              </div>
+            )}
           </div>
 
-          {lastBatchResult && (
-            <p className="text-[10px] text-textMuted text-center">
-              Last: batch {lastBatchResult.currentBatchIndex + 1} → {lastBatchResult.nextBatchIndex}, {lastBatchResult.processedCount} players, phase: {lastBatchResult.phase}
-            </p>
+          <button onClick={handleStartFlash} disabled={loading}
+            className="w-full py-3 bg-secondary text-background font-bold uppercase tracking-widest hover:bg-white disabled:opacity-50">
+            {loading ? "Starting..." : `Start Image Flash (${alivePlayers.length} players)`}
+          </button>
+        </div>
+      )}
+
+      {isImageFlash && (
+        <div className="space-y-4 border border-secondary/50 bg-secondary/10 p-6">
+          <h3 className="text-sm uppercase tracking-widest text-secondary font-bold">Image Flash in Progress</h3>
+          <div className="text-center">
+            <p className="text-6xl font-mono text-secondary">{flashRemaining ?? imageFlashSeconds}s</p>
+            <p className="text-textMuted text-xs uppercase mt-2">Image visible to all players</p>
+          </div>
+          <button onClick={handleOpenVoting} disabled={loading}
+            className="w-full py-3 bg-primary text-white font-bold uppercase tracking-widest hover:bg-primary/80 disabled:opacity-50">
+            {loading ? "Opening..." : "Open Voting"}
+          </button>
+        </div>
+      )}
+
+      {isVotingOpen && (
+        <div className="space-y-4 border border-primary/50 bg-primary/5 p-6">
+          <h3 className="text-sm uppercase tracking-widest text-primary font-bold">Voting Open</h3>
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div className="bg-background border border-border p-3">
+              <p className="text-3xl font-mono text-primary">{votesA}</p>
+              <p className="text-[10px] text-textMuted uppercase">Voted A</p>
+            </div>
+            <div className="bg-background border border-border p-3">
+              <p className="text-3xl font-mono text-white">{votingRemaining ?? votingSeconds}s</p>
+              <p className="text-[10px] text-textMuted uppercase">Remaining</p>
+            </div>
+            <div className="bg-background border border-border p-3">
+              <p className="text-3xl font-mono text-blue-400">{votesB}</p>
+              <p className="text-[10px] text-textMuted uppercase">Voted B</p>
+            </div>
+          </div>
+          <div className="flex h-6 w-full overflow-hidden border border-border">
+            {alivePlayers.length > 0 && (
+              <>
+                <motion.div className="h-full bg-primary" animate={{ width: `${(votesA / alivePlayers.length) * 100}%` }} />
+                <motion.div className="h-full bg-blue-500" animate={{ width: `${(votesB / alivePlayers.length) * 100}%` }} />
+              </>
+            )}
+          </div>
+          {notVoted > 0 && (
+            <p className="text-center text-xs text-amber-500">{notVoted} players have not voted</p>
+          )}
+          <button onClick={handleLockVotes} disabled={loading}
+            className="w-full py-3 bg-primary text-white font-bold uppercase tracking-widest hover:bg-primary/80 disabled:opacity-50">
+            {loading ? "Locking..." : "Lock Votes"}
+          </button>
+        </div>
+      )}
+
+      {(isConfidence || isConfidenceLocked) && (
+        <div className="space-y-4 border border-amber-500/50 bg-amber-500/5 p-6">
+          <h3 className="text-sm uppercase tracking-widest text-amber-500 font-bold">Confidence Ratings</h3>
+          {confidenceRemaining !== null && (
+            <div className="text-center">
+              <p className="text-4xl font-mono text-amber-500">{confidenceRemaining}s</p>
+              <p className="text-[10px] text-textMuted uppercase">Confidence window remaining</p>
+            </div>
+          )}
+          {isConfidence && (
+            <button onClick={handleLockConfidence} disabled={loading}
+              className="w-full py-3 bg-amber-500 text-black font-bold uppercase tracking-widest hover:bg-amber-400 disabled:opacity-50">
+              {loading ? "Locking..." : "Lock Confidence"}
+            </button>
           )}
         </div>
       )}
 
-      {(redInFeed + blueInFeed) > 0 && (
-        <div className="border border-border bg-surface p-4 space-y-2">
-          <p className="text-[10px] text-textMuted uppercase tracking-widest">Cascade Vote Split</p>
-          <div className="flex h-6 w-full overflow-hidden border border-border">
-            <motion.div
-              className="h-full bg-primary"
-              animate={{ width: `${(redInFeed / Math.max(redInFeed + blueInFeed, 1)) * 100}%` }}
-              transition={{ duration: 0.4 }}
-            />
-            <motion.div
-              className="h-full bg-blue-500"
-              animate={{ width: `${(blueInFeed / Math.max(redInFeed + blueInFeed, 1)) * 100}%` }}
-              transition={{ duration: 0.4 }}
-            />
+      {(isVotingLocked || isConfidenceLocked) && !isReveal && (
+        <div className="space-y-4 border border-border bg-surface p-6">
+          <h3 className="text-sm uppercase tracking-widest text-textMuted">Ready to calculate results</h3>
+          <div className="grid grid-cols-2 gap-4 text-center">
+            <div className="bg-background border border-border p-3">
+              <p className="text-2xl font-mono text-primary">{votesA}</p>
+              <p className="text-[10px] text-textMuted uppercase">Voted A</p>
+            </div>
+            <div className="bg-background border border-border p-3">
+              <p className="text-2xl font-mono text-blue-400">{votesB}</p>
+              <p className="text-[10px] text-textMuted uppercase">Voted B</p>
+            </div>
           </div>
-          <div className="flex justify-between text-xs">
-            <span className="text-primary">{redInFeed} RED ({Math.round((redInFeed / Math.max(redInFeed + blueInFeed, 1)) * 100)}%)</span>
-            <span className="text-blue-400">{blueInFeed} BLUE ({Math.round((blueInFeed / Math.max(redInFeed + blueInFeed, 1)) * 100)}%)</span>
+          <div className="text-center p-4 bg-background border border-border">
+            <p className="text-xs text-textMuted uppercase mb-2">Correct Answer</p>
+            <p className="text-4xl font-mono text-secondary">{correctAnswer}</p>
           </div>
+          <button onClick={handleCalculate} disabled={loading}
+            className="w-full py-3 bg-secondary text-background font-bold uppercase tracking-widest hover:bg-white disabled:opacity-50">
+            {loading ? "Calculating..." : "Calculate & Show Results"}
+          </button>
         </div>
       )}
 
-      <div className="border border-border bg-surface p-4 max-h-52 overflow-y-auto space-y-1">
-        <p className="text-[10px] text-textMuted uppercase tracking-widest mb-2">Decision Log</p>
-        {publicFeed.length === 0 && (
-          <p className="text-textMuted/50 text-center text-xs py-4 italic">Waiting for first batch...</p>
-        )}
-        {publicFeed.slice(-50).map((f, i) => {
-          const globalIdx = publicFeed.length - 50 + i;
-          return (
-            <div key={globalIdx} className="flex justify-between items-center p-2 border-b border-border/30 text-xs font-mono">
-              <span className="text-textMuted">#{globalIdx + 1} <span className="opacity-40">{f.playerId?.substring(0, 6)}</span>{f.autoAdvanced ? " ⚡" : ""}</span>
-              <span className={`font-bold ${f.choice === "RED" ? "text-primary" : "text-blue-400"}`}>{f.choice}</span>
+      {isReveal && b8Results && (
+        <div className="space-y-4 border border-secondary/50 bg-secondary/10 p-6">
+          <div className="flex justify-between items-center">
+            <h3 className="text-sm uppercase tracking-widest text-secondary font-bold">Reveal</h3>
+            <div className="flex gap-2">
+              {[1, 2, 3].map(s => (
+                <button key={s} onClick={() => handleRevealStep(s)}
+                  className={`px-3 py-1 text-xs uppercase ${b8RevealStep >= s ? "bg-secondary text-background" : "border border-border text-textMuted"}`}>
+                  Step {s}
+                </button>
+              ))}
             </div>
-          );
-        })}
-      </div>
+          </div>
 
-      {isLocked && (
-        <button onClick={handleReveal}
-          className="w-full py-3 border border-secondary text-secondary uppercase tracking-widest text-xs font-bold hover:bg-secondary hover:text-background transition-colors shadow-glow-gold">
-          REVEAL TRUE MAJORITY &amp; ELIMINATE
-        </button>
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div className="bg-background border border-primary/50 p-4">
+              <p className="text-3xl font-mono text-primary">{b8Results.votesA}</p>
+              <p className="text-[10px] text-textMuted uppercase">Voted A</p>
+            </div>
+            <div className="bg-background border border-secondary/50 p-4">
+              <p className="text-3xl font-mono text-secondary">{b8Results.correctAnswer}</p>
+              <p className="text-[10px] text-textMuted uppercase">Correct</p>
+            </div>
+            <div className="bg-background border border-blue-500/50 p-4">
+              <p className="text-3xl font-mono text-blue-400">{b8Results.votesB}</p>
+              <p className="text-[10px] text-textMuted uppercase">Voted B</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 text-center">
+            <div className="bg-primary/10 border border-primary/50 p-3">
+              <p className="text-2xl font-mono text-primary">{b8Results.eliminatedCount}</p>
+              <p className="text-[10px] text-textMuted uppercase">Eliminated</p>
+            </div>
+            <div className="bg-amber-900/10 border border-amber-500/50 p-3">
+              <p className="text-2xl font-mono text-amber-500">{b8Results.overconfidentCount}</p>
+              <p className="text-[10px] text-textMuted uppercase">Overconfident</p>
+            </div>
+          </div>
+
+          <button onClick={handleConfirm} disabled={loading}
+            className="w-full py-3 bg-primary text-white font-bold uppercase tracking-widest hover:bg-primary/80 disabled:opacity-50">
+            {loading ? "Confirming..." : `Confirm ${pendingEliminations.length} Eliminations`}
+          </button>
+        </div>
       )}
     </div>
   );

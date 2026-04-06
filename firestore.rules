@@ -53,8 +53,14 @@ service cloud.firestore {
       allow update, delete: if isAdminUser();
     }
     
-    // Pairs collection - for C9 sequence match game
+    // Pairs collection - for C9 sequence match game (legacy)
     match /pairs/{slotId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdminUser();
+    }
+    
+    // Sequence pairs - C9 sequence match game (individual pair docs)
+    match /sequencePairs/{pairId} {
       allow read: if isAuthenticated();
       allow write: if isAdminUser();
     }

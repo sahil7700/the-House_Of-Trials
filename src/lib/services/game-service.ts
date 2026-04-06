@@ -190,6 +190,11 @@ export const submitGameInput = async (
     submittedAt: serverTimestamp(),
   });
 
+  // Increment submissions count
+  batch.update(doc(db, "system", "gameState"), {
+    submissionsCount: increment(1),
+  });
+
   // Create submission document
   batch.set(submissionRef, {
     playerId: uid,

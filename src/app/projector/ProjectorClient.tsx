@@ -471,6 +471,234 @@ export default function ProjectorClient() {
     }
 
     // =============================================
+    // C9 SEQUENCE MATCH PROJECTOR
+    // =============================================
+    if ((gameState as any).phase === "phase_a_open") {
+      const seqPhaseAStartedAt = (gameState as any).sequencePhaseAStartedAt;
+      const phaseASeconds = (gameState as any).sequenceConfig?.phaseASeconds || 120;
+      const start = seqPhaseAStartedAt?.toDate?.()?.getTime() || Date.now();
+      const remaining = Math.max(0, phaseASeconds - Math.floor((Date.now() - start) / 1000));
+      const m = Math.floor(remaining / 60);
+      const s = remaining % 60;
+
+      return (
+        <div className="flex flex-col items-center justify-center h-full space-y-8 animate-fade-in z-20 text-center px-4">
+           <h1 className="text-[80px] font-serif text-white uppercase tracking-widest">Step 1: Create Your Secret Sequence</h1>
+           <p className={`text-[160px] font-mono font-bold leading-none ${remaining <= 30 ? "text-primary animate-pulse" : "text-white"}`}>
+             {m}:{s.toString().padStart(2, "0")}
+           </p>
+           <p className="text-2xl text-textMuted font-mono uppercase tracking-widest">
+             {submissionsCount} / {playersAlive} sequences sealed
+           </p>
+        </div>
+      );
+    }
+
+    if ((gameState as any).phase === "phase_b_open") {
+      const seqPhaseBStartedAt = (gameState as any).sequencePhaseBStartedAt;
+      const phaseBSeconds = (gameState as any).sequenceConfig?.phaseBSeconds || 90;
+      const start = seqPhaseBStartedAt?.toDate?.()?.getTime() || Date.now();
+      const remaining = Math.max(0, phaseBSeconds - Math.floor((Date.now() - start) / 1000));
+      const m = Math.floor(remaining / 60);
+      const s = remaining % 60;
+
+      return (
+        <div className="flex flex-col items-center justify-center h-full space-y-8 animate-fade-in z-20 text-center px-4">
+           <h1 className="text-[80px] font-serif text-amber-500 uppercase tracking-widest drop-shadow-glow-gold">Step 2: Guess Opponent Sequence</h1>
+           <p className={`text-[160px] font-mono font-bold leading-none ${remaining <= 30 ? "text-primary animate-pulse" : "text-amber-500"}`}>
+             {m}:{s.toString().padStart(2, "0")}
+           </p>
+           <p className="text-2xl text-textMuted font-mono uppercase tracking-widest">
+             {submissionsCount} / {playersAlive} guesses locked
+           </p>
+        </div>
+      );
+    }
+
+    if ((gameState as any).phase === "phase_b_locked") {
+      return (
+        <div className="flex flex-col items-center justify-center h-full space-y-8 animate-fade-in z-20 text-center px-4">
+           <h1 className="text-[80px] font-serif text-secondary uppercase tracking-widest">All Guesses Locked</h1>
+           <p className="text-3xl text-textMuted font-mono uppercase tracking-widest animate-pulse">Calculating results...</p>
+        </div>
+      );
+    }
+
+    // C9 Reveal (with pair results from sequencePairs collection)
+    if ((gameState as any).phase === "reveal" && activeGameId === "C9") {
+      const c9RevealStep: number = (gameState as any).sequenceRevealStep || 0;
+      const elimIds: string[] = (gameState as any).pendingEliminations || [];
+      const results: any = (gameState as any).results || {};
+
+      return (
+        <div className="flex flex-col items-center justify-center h-full space-y-8 animate-fade-in z-20 text-center px-4">
+           <h1 className="text-[80px] font-serif text-secondary uppercase tracking-widest">Sequence Match Results</h1>
+           {c9RevealStep === 0 && (
+             <p className="text-3xl text-textMuted font-mono uppercase tracking-widest animate-pulse">Calculating...</p>
+           )}
+           {c9RevealStep >= 1 && (
+             <div className="space-y-4">
+               <p className="text-4xl text-white font-mono uppercase tracking-widest">
+                 {results.eliminatedPlayerIds?.length || 0} Eliminated
+               </p>
+               <p className="text-2xl text-textMuted font-mono uppercase tracking-widest">
+                 {playersAlive} Survivors
+               </p>
+             </div>
+           )}
+        </div>
+      );
+    }
+
+    // =============================================
+    // B8 INFORMATION CASCADE PROJECTOR
+    // =============================================
+    if ((gameState as any).phase === "image_flash") {
+      const flashStartedAt = (gameState as any).imageFlashStartedAt;
+      const flashSecs = (gameState as any).b8Config?.imageFlashSeconds || 3;
+      const start = flashStartedAt?.toDate?.()?.getTime() || Date.now();
+      const remaining = Math.max(0, flashSecs - Math.floor((Date.now() - start) / 1000));
+
+      return (
+        <div className="flex flex-col items-center justify-center h-full space-y-8 animate-fade-in z-20 text-center px-4">
+           <h1 className="text-[80px] font-serif text-white uppercase tracking-widest">Observe</h1>
+           <p className="text-2xl text-textMuted font-mono uppercase tracking-widest mb-8">Study the image carefully</p>
+           <div className="w-full max-w-2xl aspect-video bg-surface border-4 border-secondary flex items-center justify-center">
+              <p className="text-4xl text-secondary font-serif uppercase tracking-widest">
+                {((gameState as any).b8Config?.optionALabel || "Option A")} vs {((gameState as any).b8Config?.optionBLabel || "Option B")}
+              </p>
+           </div>
+           <div className="w-full max-w-2xl h-4 bg-background border-2 border-border overflow-hidden">
+              <motion.div
+                className="h-full bg-secondary"
+                animate={{ width: `${(remaining / flashSecs) * 100}%` }}
+                transition={{ duration: 0.5 }}
+              />
+           </div>
+           <p className={`text-[120px] font-mono font-bold ${remaining <= 1 ? "text-primary animate-pulse" : "text-white"}`}>{remaining}s</p>
+        </div>
+      );
+    }
+
+    if ((gameState as any).phase === "voting_open") {
+      const votingStartedAt = (gameState as any).votingStartedAt;
+      const votingSecs = (gameState as any).b8Config?.votingSeconds || 7;
+      const start = votingStartedAt?.toDate?.()?.getTime() || Date.now();
+      const remaining = Math.max(0, votingSecs - Math.floor((Date.now() - start) / 1000));
+      const fakeEnabled = (gameState as any).b8Config?.fakeMajorityEnabled !== false;
+      const fakeBias = (gameState as any).b8Config?.fakeMajorityBiasToward || "A";
+      const fakePct = (gameState as any).b8Config?.fakeMajorityStartPercent || 72;
+      const fakeA = fakeBias === "A" ? fakePct : 100 - fakePct;
+      const fakeB = fakeBias === "B" ? fakePct : 100 - fakePct;
+
+      return (
+        <div className="flex flex-col items-center justify-center h-full space-y-8 animate-fade-in z-20 text-center px-4">
+           <h1 className="text-[80px] font-serif text-white uppercase tracking-widest">Vote Now</h1>
+           {fakeEnabled && (
+             <div className="w-full max-w-3xl space-y-4">
+               <div className="space-y-2">
+                 <div className="flex justify-between text-2xl font-mono">
+                   <span className="text-primary">{((gameState as any).b8Config?.optionALabel || "Option A")}</span>
+                   <span className="text-primary font-bold">{fakeA}%</span>
+                 </div>
+                 <div className="w-full h-12 bg-background border-2 border-border overflow-hidden">
+                   <motion.div className="h-full bg-primary" animate={{ width: `${fakeA}%` }} transition={{ duration: 0.5 }} />
+                 </div>
+               </div>
+               <div className="space-y-2">
+                 <div className="flex justify-between text-2xl font-mono">
+                   <span className="text-blue-400">{((gameState as any).b8Config?.optionBLabel || "Option B")}</span>
+                   <span className="text-blue-400 font-bold">{fakeB}%</span>
+                 </div>
+                 <div className="w-full h-12 bg-background border-2 border-border overflow-hidden">
+                   <motion.div className="h-full bg-blue-500" animate={{ width: `${fakeB}%` }} transition={{ duration: 0.5 }} />
+                 </div>
+               </div>
+             </div>
+           )}
+           <p className={`text-[120px] font-mono font-bold ${remaining <= 3 ? "text-primary animate-pulse" : "text-white"}`}>{remaining}s</p>
+           <p className="text-2xl text-textMuted font-mono uppercase tracking-widest">Submit your vote on your device</p>
+        </div>
+      );
+    }
+
+    if ((gameState as any).phase === "voting_locked") {
+      return (
+        <div className="flex flex-col items-center justify-center h-full space-y-8 animate-fade-in z-20 text-center px-4">
+           <h1 className="text-[80px] font-serif text-secondary uppercase tracking-widest">Voting Closed</h1>
+           <p className="text-3xl text-textMuted font-mono uppercase tracking-widest animate-pulse">Results being calculated...</p>
+        </div>
+      );
+    }
+
+    if ((gameState as any).phase === "confidence") {
+      const confStartedAt = (gameState as any).confidenceStartedAt;
+      const confSecs = (gameState as any).b8Config?.confidenceSeconds || 5;
+      const start = confStartedAt?.toDate?.()?.getTime() || Date.now();
+      const remaining = Math.max(0, confSecs - Math.floor((Date.now() - start) / 1000));
+
+      return (
+        <div className="flex flex-col items-center justify-center h-full space-y-8 animate-fade-in z-20 text-center px-4">
+           <h1 className="text-[80px] font-serif text-amber-500 uppercase tracking-widest">Confidence Ratings</h1>
+           <p className={`text-[120px] font-mono font-bold text-amber-500`}>{remaining}s</p>
+           <p className="text-2xl text-textMuted font-mono uppercase tracking-widest">Rate your certainty on your device</p>
+        </div>
+      );
+    }
+
+    if ((gameState as any).phase === "confidence_locked") {
+      return (
+        <div className="flex flex-col items-center justify-center h-full space-y-8 animate-fade-in z-20 text-center px-4">
+           <h1 className="text-[80px] font-serif text-secondary uppercase tracking-widest">Results Ready</h1>
+           <p className="text-3xl text-textMuted font-mono uppercase tracking-widest animate-pulse">Reveal coming...</p>
+        </div>
+      );
+    }
+
+    // B8 Reveal
+    if ((gameState as any).phase === "reveal" && activeGameId === "B8") {
+      const b8Results: any = (gameState as any).b8Results;
+      const b8RevealStep: number = (gameState as any).b8RevealStep || 0;
+
+      return (
+        <div className="flex flex-col items-center justify-center h-full space-y-8 animate-fade-in z-20 text-center px-4">
+           {b8RevealStep === 0 && (
+             <p className="text-3xl text-textMuted font-mono uppercase tracking-widest animate-pulse">Preparing results...</p>
+           )}
+           {b8RevealStep >= 1 && b8Results && (
+             <div className="space-y-8">
+               <h1 className="text-[80px] font-serif text-secondary uppercase tracking-widest">Correct Answer</h1>
+               <p className={`text-[120px] font-mono font-bold ${b8Results.correctAnswer === "A" ? "text-primary" : "text-blue-400"}`}>
+                 {b8Results.correctAnswer}
+               </p>
+             </div>
+           )}
+           {b8RevealStep >= 2 && b8Results && (
+             <div className="space-y-4">
+               <p className="text-4xl text-white font-mono uppercase tracking-widest">Vote Split</p>
+               <div className="flex w-full max-w-3xl h-16 overflow-hidden border-2 border-border">
+                 <div className="h-full bg-primary" style={{ width: `${(b8Results.votesA / Math.max(b8Results.totalVoters, 1)) * 100}%` }} />
+                 <div className="h-full bg-blue-500" style={{ width: `${(b8Results.votesB / Math.max(b8Results.totalVoters, 1)) * 100}%` }} />
+               </div>
+               <div className="flex justify-between text-2xl font-mono">
+                 <span className="text-primary">A: {b8Results.votesA}</span>
+                 <span className="text-blue-400">B: {b8Results.votesB}</span>
+               </div>
+             </div>
+           )}
+           {b8RevealStep >= 3 && b8Results && (
+             <div className="space-y-4">
+               <p className="text-4xl text-textMuted font-mono uppercase tracking-widest">Eliminated: {b8Results.eliminatedCount}</p>
+               {b8Results.overconfidentCount > 0 && (
+                 <p className="text-2xl text-amber-500 font-mono uppercase tracking-widest">Overconfident: {b8Results.overconfidentCount}</p>
+               )}
+             </div>
+           )}
+        </div>
+      );
+    }
+
+    // =============================================
     // LEMONS PHASE PROJECTOR
     // =============================================
     if ((gameState as any).phase === "roles_assigned") {

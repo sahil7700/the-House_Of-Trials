@@ -47,8 +47,18 @@ export default function LobbyPage() {
 
     const unsubGame = subscribeToGameState((state) => {
       setGameState(state);
-      if (state && state.phase === "active") {
-        router.push("/game");
+      if (state) {
+        const nonLobbyPhases = [
+          "active", "active_a", "active_b", "locked", "locked_a", "locked_b",
+          "calculating", "reveal", "confirm",
+          "image_flash", "voting_open", "voting_locked", "confidence", "confidence_locked",
+          "phase_a_open", "phase_a_locked", "phase_b_open", "phase_b_locked",
+          "roles_assigned", "card_flash", "trading_open", "trading_locked",
+          "pairing"
+        ];
+        if (nonLobbyPhases.includes(state.phase)) {
+          router.push("/game");
+        }
       }
     });
 

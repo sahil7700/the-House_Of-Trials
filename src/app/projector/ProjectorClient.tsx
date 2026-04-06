@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { subscribeToGameState, subscribeToEventConfig, GameState, EventConfig } from "@/lib/services/game-service";
-import { collection, onSnapshot, query, doc } from "firebase/firestore";
+import { collection, onSnapshot, query, doc, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { PlayerData } from "@/lib/services/player-service";
 import { motion, AnimatePresence } from "framer-motion";
@@ -37,12 +37,23 @@ export default function ProjectorClient() {
 
   useEffect(() => {
     if (!gameState?.currentSlot) return;
-    const unsub = onSnapshot(doc(db, "pairs", String(gameState.currentSlot)), (docSnap) => {
+    // Subscribe to legacy pairs collection
+    const unsubLegacy = onSnapshot(doc(db, "pairs", String(gameState.currentSlot)), (docSnap) => {
       if (docSnap.exists()) {
         setPairsData(docSnap.data().pairs || []);
       }
     });
-    return () => unsub();
+    // Also subscribe to new sequencePairs collection for C9
+    const unsubSeq = onSnapshot(
+      query(collection(db, "sequencePairs"), where("slotNumber", "==", gameState.currentSlot)),
+      (snap) => {
+        if (!snap.empty) {
+          const pairs = snap.docs.map(d => ({ pairId: d.id, ...d.data() }));
+          setPairsData(pairs);
+        }
+      }
+    );
+    return () => { unsubLegacy(); unsubSeq(); };
   }, [gameState?.currentSlot]);
 
   useEffect(() => {

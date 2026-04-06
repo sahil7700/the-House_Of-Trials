@@ -286,13 +286,53 @@ export default function AdminDashboard() {
       };
 
       if (activeGameId === "B6") {
-         const res = await fetch("/api/game/bidding-survival/calculate", {
-            method: "POST", body: JSON.stringify({ slotNumber: gameState.currentSlot, gameId: "B6", config: calcConfig.config })
-         });
-         const data = await res.json();
-         if (!data.success) throw new Error(data.error);
+         const { writeBatch, doc, increment } = await import("firebase/firestore");
+         const { db } = await import("@/lib/firebase");
+         const b6Config = calcConfig.config as any;
+         const { eliminationMode = "fixed", eliminationValue = 1, penalty } = b6Config;
          
-         await updateGameState({ results: { ...data.results, eliminatedPlayerIds: data.eliminatedPlayerIds }, phase: "reveal" });
+         const sorted = [...submissions].sort((a, b) => Number(a.value || 0) - Number(b.value || 0));
+         let elimCount = eliminationMode === "percentage" ? Math.floor(sorted.length * (eliminationValue / 100)) : eliminationValue;
+         elimCount = Math.min(elimCount, Math.max(0, sorted.length - 1));
+         
+         const cutOffBid = elimCount > 0 ? Number(sorted[elimCount - 1].value) : 0;
+         const eliminated = sorted.filter(s => Number(s.value) <= cutOffBid && elimCount > 0);
+         let eliminatedIds = eliminated.map(s => s.playerId);
+         
+         if (eliminatedIds.length >= sorted.length && sorted.length > 0) {
+            const highestBidder = sorted[sorted.length - 1];
+            eliminatedIds = eliminatedIds.filter(id => id !== highestBidder.playerId);
+         }
+         
+         const highestBid = sorted.length > 0 ? Number(sorted[sorted.length - 1].value) : 0;
+         const highestBidders = sorted.filter(s => Number(s.value) === highestBid);
+         const highestBidderIds = highestBidders.map(s => s.playerId);
+         
+         const histogram: Record<number, number> = {};
+         for (let i = 1; i <= 100; i++) histogram[i] = 0;
+         sorted.forEach(s => { histogram[Number(s.value)] = (histogram[Number(s.value)] || 0) + 1; });
+         
+         const batch = writeBatch(db);
+         eliminatedIds.forEach(playerId => {
+            batch.update(doc(db, "players", playerId), {
+               status: "eliminated",
+               pointsDelta: -20,
+               eliminationReason: "bidding_survival",
+            });
+         });
+         
+         batch.update(doc(db, "system", "gameState"), {
+            submissionsCount: increment(submissions.length),
+         });
+         
+         await batch.commit();
+         
+         const results = {
+            cutOffBid, elimCount, highestBid, highestBidderIds, penaltyApplied: penalty,
+            histogram, eliminatedCount: eliminatedIds.length, survivedCount: sorted.length - eliminatedIds.length
+         };
+         
+         await updateGameState({ results: { ...results, eliminatedPlayerIds: eliminatedIds }, phase: "reveal" });
          setCalculating(false);
          return;
       }

@@ -79,179 +79,267 @@ export default function GameC9Admin({ gameState, players, onUpdateGameState }: P
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/game/sequence/create-pairs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slotNumber: gameState.currentSlot }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || data.error || "Pairing failed");
-      setPairs(data.pairs);
-      onUpdateGameState?.({
+      const { collection, doc, writeBatch, getDocs, query, where } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase");
+      
+      const playersSnap = await getDocs(query(collection(db, "players"), where("status", "==", "alive")));
+      const alivePlayers = playersSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+      
+      if (alivePlayers.length < 2) throw new Error("Need at least 2 alive players to form pairs");
+      
+      const shuffled = [...alivePlayers].sort(() => 0.5 - Math.random());
+      let byePlayer = null;
+      let pairedPlayers = shuffled;
+      if (shuffled.length % 2 !== 0) {
+        const byeIndex = Math.floor(Math.random() * shuffled.length);
+        byePlayer = shuffled.splice(byeIndex, 1)[0];
+      }
+
+      const newPairs = [];
+      const batch = writeBatch(db);
+
+      for (let i = 0; i < pairedPlayers.length; i += 2) {
+        const pairId = `pair_${gameState.currentSlot}_${i / 2 + 1}`;
+        const p = {
+          pairId, pairIndex: i / 2 + 1, slotNumber: gameState.currentSlot,
+          playerAId: pairedPlayers[i].id, playerAName: String(pairedPlayers[i].name || pairedPlayers[i].id),
+          playerBId: pairedPlayers[i + 1].id, playerBName: String(pairedPlayers[i + 1].name || pairedPlayers[i + 1].id),
+          playerA_sequence: null, playerB_sequence: null, playerA_guess: null, playerB_guess: null,
+          playerA_score: null, playerB_score: null, winnerId: null, loserId: null, tied: false, byePair: false,
+        };
+        newPairs.push(p);
+        batch.set(doc(db, "sequencePairs", pairId), p);
+      }
+
+      if (byePlayer) {
+        const byePairId = `pair_${gameState.currentSlot}_bye`;
+        const p = {
+          pairId: byePairId, pairIndex: newPairs.length + 1, slotNumber: gameState.currentSlot,
+          playerAId: byePlayer.id, playerAName: String(byePlayer.name || byePlayer.id),
+          playerBId: "BYE", playerBName: "BYE — Auto-advance",
+          playerA_sequence: null, playerB_sequence: null, playerA_guess: null, playerB_guess: null,
+          playerA_score: null, playerB_score: null, winnerId: null, loserId: null, tied: false, byePair: true,
+        };
+        newPairs.push(p);
+        batch.set(doc(db, "sequencePairs", byePairId), p);
+      }
+
+      batch.update(doc(db, "system", "gameState"), {
         sequencePairsCreated: true,
-        sequenceByePlayerId: data.byePlayer?.id || null,
-        pendingEliminations: [],
-        results: null,
+        sequenceByePlayerId: byePlayer?.id || null,
+        sequenceTiedPairs: [],
+        sequenceRevealStep: 0,
+      });
+
+      await batch.commit();
+      setPairs(newPairs);
+      
+      onUpdateGameState?.({
+        sequencePairsCreated: true, sequenceByePlayerId: byePlayer?.id || null, pendingEliminations: [], results: null
       } as any);
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e: any) { setError(e.message); } finally { setLoading(false); }
   };
 
   const handleStartPhaseA = async () => {
     setLoading(true);
     try {
-      const config = {
-        phaseASeconds,
-        phaseBSeconds,
-        showOpponentName,
-        exactMatchBonus: 10,
-        winnerPoints: 80,
-        loserPoints: 0,
-        tieRule,
-      };
-      const res = await fetch("/api/game/sequence/start-phase-a", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slotNumber: gameState.currentSlot, config }),
+      const config = { phaseASeconds, phaseBSeconds, showOpponentName, exactMatchBonus: 10, winnerPoints: 80, loserPoints: 0, tieRule };
+      const { doc, writeBatch, serverTimestamp } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase");
+      const batch = writeBatch(db);
+      batch.update(doc(db, "system", "gameState"), {
+        phase: "phase_a_open", sequenceConfig: config, sequencePhaseAStartedAt: serverTimestamp(), submissionsCount: 0
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      onUpdateGameState?.({
-        phase: "phase_a_open",
-        sequenceConfig: config,
-        sequencePhaseAStartedAt: new Date(),
-        submissionsCount: 0,
-      } as any);
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
+      await batch.commit();
+      onUpdateGameState?.({ phase: "phase_a_open", sequenceConfig: config, sequencePhaseAStartedAt: new Date(), submissionsCount: 0 } as any);
+    } catch (e: any) { setError(e.message); } finally { setLoading(false); }
   };
 
   const handleLockPhaseA = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/game/sequence/lock-phase-a", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slotNumber: gameState.currentSlot }),
+      const { doc, writeBatch, serverTimestamp } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase");
+      const batch = writeBatch(db);
+      batch.update(doc(db, "system", "gameState"), {
+        phase: "phase_b_open", sequencePhaseAStartedAt: null, sequencePhaseBStartedAt: serverTimestamp()
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      await batch.commit();
       await fetchPairs();
-      onUpdateGameState?.({
-        phase: "phase_b_open",
-        sequencePhaseAStartedAt: null,
-        sequencePhaseBStartedAt: new Date(),
-      } as any);
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
+      onUpdateGameState?.({ phase: "phase_b_open", sequencePhaseAStartedAt: null, sequencePhaseBStartedAt: new Date() } as any);
+    } catch (e: any) { setError(e.message); } finally { setLoading(false); }
   };
 
   const handleLockPhaseB = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/game/sequence/lock-phase-b", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slotNumber: gameState.currentSlot }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const { doc, writeBatch } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase");
+      const batch = writeBatch(db);
+      batch.update(doc(db, "system", "gameState"), { phase: "phase_b_locked", sequencePhaseBStartedAt: null });
+      await batch.commit();
       await fetchPairs();
-      onUpdateGameState?.({
-        phase: "phase_b_locked",
-        sequencePhaseBStartedAt: null,
-      } as any);
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
+      onUpdateGameState?.({ phase: "phase_b_locked", sequencePhaseBStartedAt: null } as any);
+    } catch (e: any) { setError(e.message); } finally { setLoading(false); }
   };
 
   const handleCalculate = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/game/sequence/calculate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slotNumber: gameState.currentSlot, tieRule }),
+      const { doc, collection, getDocs, query, where, writeBatch } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase");
+      
+      const pairsSnap = await getDocs(query(collection(db, "sequencePairs"), where("slotNumber", "==", gameState.currentSlot)));
+      const eliminatedPlayerIds: string[] = [];
+      const winnerIds: string[] = [];
+      const tiedPairIds: string[] = [];
+      const pointsDeltaMap: Record<string, number> = {};
+      const winnersPoints = 80;
+      const exactMatchBonus = 10;
+      
+      const batch = writeBatch(db);
+      
+      for (const pairDoc of pairsSnap.docs) {
+        const pair = pairDoc.data() as any;
+        if (pair.byePair) {
+          pointsDeltaMap[pair.playerAId] = winnersPoints;
+          batch.update(pairDoc.ref, { playerA_score: 0, winnerId: pair.playerAId, loserId: null, tied: false });
+          winnerIds.push(pair.playerAId);
+          continue;
+        }
+        
+        if (!pair.playerA_sequence || !pair.playerB_sequence || !pair.playerA_guess || !pair.playerB_guess) continue;
+        
+        let playerA_score = 0; let playerB_score = 0;
+        let playerA_exactMatches = 0; let playerB_exactMatches = 0;
+        
+        for (let i = 0; i < 3; i++) {
+          const aDiff = Math.abs(pair.playerA_guess[i] - pair.playerB_sequence[i]);
+          playerA_score += aDiff;
+          if (aDiff === 0) playerA_exactMatches++;
+          
+          const bDiff = Math.abs(pair.playerB_guess[i] - pair.playerA_sequence[i]);
+          playerB_score += bDiff;
+          if (bDiff === 0) playerB_exactMatches++;
+        }
+        
+        pointsDeltaMap[pair.playerAId] = playerA_exactMatches * exactMatchBonus;
+        pointsDeltaMap[pair.playerBId] = playerB_exactMatches * exactMatchBonus;
+        
+        let winnerId = null; let loserId = null; let tied = false;
+        if (playerA_score < playerB_score) {
+          winnerId = pair.playerAId; loserId = pair.playerBId;
+          eliminatedPlayerIds.push(pair.playerBId); pointsDeltaMap[pair.playerAId] += winnersPoints; winnerIds.push(pair.playerAId);
+        } else if (playerB_score < playerA_score) {
+          winnerId = pair.playerBId; loserId = pair.playerAId;
+          eliminatedPlayerIds.push(pair.playerAId); pointsDeltaMap[pair.playerBId] += winnersPoints; winnerIds.push(pair.playerBId);
+        } else {
+          tied = true; tiedPairIds.push(pair.pairId);
+          if (tieRule === "both_eliminated") {
+            eliminatedPlayerIds.push(pair.playerAId, pair.playerBId);
+          } else if (tieRule === "both_safe") {
+            pointsDeltaMap[pair.playerAId] += winnersPoints; pointsDeltaMap[pair.playerBId] += winnersPoints;
+            winnerIds.push(pair.playerAId, pair.playerBId);
+          }
+        }
+        
+        batch.update(pairDoc.ref, { playerA_score, playerB_score, playerA_exactMatches, playerB_exactMatches, winnerId, loserId, tied });
+      }
+      
+      batch.update(doc(db, "system", "gameState"), {
+        phase: "reveal", pendingEliminations: eliminatedPlayerIds, sequenceTiedPairs: tiedPairIds, sequenceRevealStep: 0,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      await batch.commit();
+      
       await fetchPairs();
       onUpdateGameState?.({
-        phase: "reveal",
-        pendingEliminations: data.eliminatedPlayerIds,
-        sequenceTiedPairs: data.tiedPairIds,
-        results: {
-          eliminatedPlayerIds: data.eliminatedPlayerIds,
-          pointsDeltaMap: data.pointsDeltaMap,
-          winnerIds: data.winnerIds,
-          tiedPairIds: data.tiedPairIds,
-        },
+        phase: "reveal", pendingEliminations: eliminatedPlayerIds, sequenceTiedPairs: tiedPairIds,
+        results: { eliminatedPlayerIds, pointsDeltaMap, winnerIds, tiedPairIds },
       } as any);
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e: any) { setError(e.message); } finally { setLoading(false); }
   };
 
   const handleRevealStep = async (step: number) => {
-    await fetch("/api/game/sequence/reveal", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ step }),
-    });
+    const { doc, writeBatch } = await import("firebase/firestore");
+    const { db } = await import("@/lib/firebase");
+    const batch = writeBatch(db);
+    batch.update(doc(db, "system", "gameState"), { sequenceRevealStep: step });
+    await batch.commit();
     onUpdateGameState?.({ sequenceRevealStep: step } as any);
   };
 
   const handleResolveTie = async (pairId: string, resolution: string) => {
     try {
-      await fetch("/api/game/sequence/resolve-tie", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pairId, resolution, slotNumber: gameState.currentSlot }),
+      const { doc, getDoc, writeBatch } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase");
+      
+      const pairSnap = await getDoc(doc(db, "sequencePairs", pairId));
+      const pair = pairSnap.data() as any;
+      if (!pair) return;
+      
+      const gameSnap = await getDoc(doc(db, "system", "gameState"));
+      const state = gameSnap.data() as any;
+      
+      let elims = [...(state.pendingEliminations || [])];
+      let pmap = { ...(state.results?.pointsDeltaMap || {}) };
+      let newTied = (state.sequenceTiedPairs || []).filter((id: string) => id !== pairId);
+      
+      const batch = writeBatch(db);
+      const winnersPoints = 80;
+      
+      if (resolution === "playerA") {
+        elims.push(pair.playerBId); pmap[pair.playerAId] = (pmap[pair.playerAId] || 0) + winnersPoints;
+        batch.update(pairSnap.ref, { tied: false, winnerId: pair.playerAId, loserId: pair.playerBId });
+      } else if (resolution === "playerB") {
+        elims.push(pair.playerAId); pmap[pair.playerBId] = (pmap[pair.playerBId] || 0) + winnersPoints;
+        batch.update(pairSnap.ref, { tied: false, winnerId: pair.playerBId, loserId: pair.playerAId });
+      } else if (resolution === "both_eliminated") {
+        elims.push(pair.playerAId, pair.playerBId);
+        batch.update(pairSnap.ref, { tied: false });
+      } else if (resolution === "both_safe") {
+        pmap[pair.playerAId] = (pmap[pair.playerAId] || 0) + winnersPoints;
+        pmap[pair.playerBId] = (pmap[pair.playerBId] || 0) + winnersPoints;
+        batch.update(pairSnap.ref, { tied: false });
+      }
+      
+      batch.update(doc(db, "system", "gameState"), {
+        pendingEliminations: elims, sequenceTiedPairs: newTied,
+        "results.pointsDeltaMap": pmap, "results.eliminatedPlayerIds": elims
       });
+      await batch.commit();
+      
       await fetchPairs();
-    } catch (e: any) {
-      setError(e.message);
-    }
+    } catch (e: any) { setError(e.message); }
   };
 
   const handleConfirm = async () => {
     setLoading(true);
     try {
-      await fetch("/api/game/sequence/confirm-eliminations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          slotNumber: gameState.currentSlot,
-          eliminatedPlayerIds: pendingEliminations,
-          pointsDeltaMap: (gameState.results as any)?.pointsDeltaMap || {},
-        }),
-      });
-      onUpdateGameState?.({
+      const { confirmEliminations } = await import("@/lib/services/admin-service");
+      await confirmEliminations(pendingEliminations, "adminId");
+      
+      const { doc, writeBatch, serverTimestamp } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase");
+      
+      const pmap = (gameState.results as any)?.pointsDeltaMap || {};
+      const batch = writeBatch(db);
+      for (const [uid, delta] of Object.entries(pmap)) {
+         batch.update(doc(db, "players", uid), {
+            points: (await import("firebase/firestore")).increment(Number(delta) || 0)
+         });
+      }
+      batch.update(doc(db, "system", "gameState"), {
         phase: "confirmed",
-        pendingEliminations: [],
         sequencePairsCreated: false,
         sequenceByePlayerId: null,
         sequenceTiedPairs: [],
+      });
+      await batch.commit();
+
+      onUpdateGameState?.({
+        phase: "confirmed", pendingEliminations: [], sequencePairsCreated: false, sequenceByePlayerId: null, sequenceTiedPairs: [],
       } as any);
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e: any) { setError(e.message); } finally { setLoading(false); }
   };
 
   if (isConfirmed) {

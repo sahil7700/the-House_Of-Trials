@@ -1,0 +1,4 @@
+[
+  "src/app/admin/dashboard/page.tsx(291,18): error TS2339: Property 'eliminationMode' does not exist on type '{ timerSeconds: number; pointsFirst: number; pointsSecond: number; pointsThird: number; pointsSafe: number; pointsEliminated: number; eliminationMode: EliminationMode; ... 6 more ...; gameSpecificConfig: any; } | { ...; }'.\r",
+  "src/app/admin/dashboard/page.tsx(291,67): error TS2339: Property 'penalty' does not exist on type '{ timerSeconds: number; pointsFirst: number; pointsSecond: number; pointsThird: number; pointsSafe: number; pointsEliminated: number; eliminationMode: EliminationMode; ... 6 more ...; gameSpecificConfig: any; } | { ...; }'.\r"
+]

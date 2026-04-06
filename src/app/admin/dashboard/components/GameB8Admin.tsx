@@ -103,16 +103,28 @@ export default function GameB8Admin({ gameState, players, onUpdateGameState }: P
   const handleStartFlash = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/game/b8/start-flash", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slotNumber: gameState.currentSlot, config: getConfig() }),
+      const config = getConfig();
+      const { writeBatch, doc, collection, getDocs, serverTimestamp } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase");
+      
+      const batch = writeBatch(db);
+      batch.update(doc(db, "system", "gameState"), {
+        phase: "image_flash",
+        b8Config: config,
+        b8Results: null,
+        imageFlashStartedAt: serverTimestamp(),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+
+      const playersSnap = await getDocs(collection(db, "players"));
+      playersSnap.docs.forEach(p => {
+        batch.update(p.ref, { currentSubmission: null, submittedAt: null });
+      });
+
+      await batch.commit();
+
       onUpdateGameState?.({
         phase: "image_flash",
-        b8Config: getConfig(),
+        b8Config: config,
         imageFlashStartedAt: new Date(),
       } as any);
     } catch (e: any) { setError(e.message); }
@@ -122,13 +134,16 @@ export default function GameB8Admin({ gameState, players, onUpdateGameState }: P
   const handleOpenVoting = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/game/b8/open-voting", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slotNumber: gameState.currentSlot }),
+      const { writeBatch, doc, serverTimestamp } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase");
+      const batch = writeBatch(db);
+      
+      batch.update(doc(db, "system", "gameState"), {
+        phase: "voting_open",
+        votingStartedAt: serverTimestamp(),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      await batch.commit();
+
       onUpdateGameState?.({
         phase: "voting_open",
         votingStartedAt: new Date(),
@@ -140,16 +155,21 @@ export default function GameB8Admin({ gameState, players, onUpdateGameState }: P
   const handleLockVotes = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/game/b8/lock-votes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slotNumber: gameState.currentSlot, confidenceEnabled }),
+      const { writeBatch, doc, serverTimestamp } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase");
+      const batch = writeBatch(db);
+      
+      const newPhase = confidenceEnabled ? "confidence" : "voting_locked";
+      
+      batch.update(doc(db, "system", "gameState"), {
+        phase: newPhase,
+        ...(confidenceEnabled ? { confidenceStartedAt: serverTimestamp() } : {}),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      await batch.commit();
+
       onUpdateGameState?.({
-        phase: data.phase,
-        ...(data.phase === "confidence" ? { confidenceStartedAt: new Date() } : {}),
+        phase: newPhase,
+        ...(confidenceEnabled ? { confidenceStartedAt: new Date() } : {}),
       } as any);
     } catch (e: any) { setError(e.message); }
     finally { setLoading(false); }
@@ -158,13 +178,15 @@ export default function GameB8Admin({ gameState, players, onUpdateGameState }: P
   const handleLockConfidence = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/game/b8/lock-confidence", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slotNumber: gameState.currentSlot }),
+      const { writeBatch, doc } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase");
+      const batch = writeBatch(db);
+      
+      batch.update(doc(db, "system", "gameState"), {
+        phase: "confidence_locked"
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      await batch.commit();
+
       onUpdateGameState?.({ phase: "confidence_locked" } as any);
     } catch (e: any) { setError(e.message); }
     finally { setLoading(false); }
@@ -173,47 +195,71 @@ export default function GameB8Admin({ gameState, players, onUpdateGameState }: P
   const handleCalculate = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/game/b8/calculate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slotNumber: gameState.currentSlot, gameState }),
+      const { doc, writeBatch } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase");
+      
+      const config = b8Config || {};
+      const correctAnswer = config.correctAnswer || "A";
+      const votesA = players.filter(p => p.currentSubmission === "A" && p.status === "alive").length;
+      const votesB = players.filter(p => p.currentSubmission === "B" && p.status === "alive").length;
+      
+      const eliminatedPlayerIds = players
+         .filter(p => p.status === "alive" && p.currentSubmission !== null && p.currentSubmission !== correctAnswer)
+         .map(p => p.id);
+      
+      const overconfidentCount = 0; // Or calculate if required
+      
+      const results = {
+        totalVoters: votesA + votesB,
+        votesA,
+        votesB,
+        correctAnswer,
+        eliminatedCount: eliminatedPlayerIds.length,
+        overconfidentCount
+      };
+
+      const batch = writeBatch(db);
+      batch.update(doc(db, "system", "gameState"), {
+        phase: "reveal",
+        b8Results: results,
+        pendingEliminations: eliminatedPlayerIds
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      await batch.commit();
+
       onUpdateGameState?.({
         phase: "reveal",
         b8RevealStep: 0,
-        b8Results: {
-          totalVoters: data.votesA + data.votesB,
-          votesA: data.votesA,
-          votesB: data.votesB,
-          correctAnswer: data.correctAnswer,
-          eliminatedCount: data.eliminatedCount,
-          overconfidentCount: data.overconfidentCount,
-        },
-        pendingEliminations: data.eliminatedPlayerIds,
+        b8Results: results,
+        pendingEliminations: eliminatedPlayerIds,
       } as any);
     } catch (e: any) { setError(e.message); }
     finally { setLoading(false); }
   };
 
   const handleRevealStep = async (step: number) => {
-    await fetch("/api/game/b8/reveal", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ step }),
-    });
+    const { doc, writeBatch } = await import("firebase/firestore");
+    const { db } = await import("@/lib/firebase");
+    const batch = writeBatch(db);
+    batch.update(doc(db, "system", "gameState"), { b8RevealStep: step });
+    await batch.commit();
     onUpdateGameState?.({ b8RevealStep: step } as any);
   };
 
   const handleConfirm = async () => {
     setLoading(true);
     try {
-      await fetch("/api/game/b8/confirm-eliminations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slotNumber: gameState.currentSlot, eliminatedPlayerIds: pendingEliminations }),
+      const { confirmEliminations } = await import("@/lib/services/admin-service");
+      await confirmEliminations(pendingEliminations, "adminId");
+      
+      const { doc, writeBatch } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase");
+      const batch = writeBatch(db);
+      batch.update(doc(db, "system", "gameState"), {
+        phase: "confirmed",
+        b8Results: null,
       });
+      await batch.commit();
+
       onUpdateGameState?.({
         phase: "confirmed",
         pendingEliminations: [],

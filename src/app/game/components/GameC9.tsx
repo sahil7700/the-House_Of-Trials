@@ -121,26 +121,42 @@ export default function GameC9({ gameState, playerId }: Props) {
   const submitSequence = async () => {
     if (hasSubmittedA) return;
     try {
-      const res = await fetch("/api/game/sequence/submit-sequence", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playerId, slotNumber: gameState.currentSlot, sequence: mySequence }),
+      const { doc, updateDoc, serverTimestamp, collection, getDocs, query, where } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase");
+      const snap = await getDocs(query(collection(db, "sequencePairs"), where("slotNumber", "==", gameState.currentSlot)));
+      const pair = snap.docs.find(d => d.data().playerAId === playerId || d.data().playerBId === playerId);
+      if (!pair) return;
+      
+      const isA = pair.data().playerAId === playerId;
+      await updateDoc(doc(db, "sequencePairs", pair.id), {
+        [isA ? "playerA_sequence" : "playerB_sequence"]: mySequence,
       });
-      const data = await res.json();
-      if (data.success) setHasSubmittedA(true);
+      await updateDoc(doc(db, "players", playerId), {
+        currentSubmission: { type: "sequence", value: mySequence },
+        submittedAt: serverTimestamp()
+      });
+      setHasSubmittedA(true);
     } catch (e) { console.error(e); }
   };
 
   const submitGuess = async () => {
     if (hasSubmittedB) return;
     try {
-      const res = await fetch("/api/game/sequence/submit-guess", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playerId, slotNumber: gameState.currentSlot, guess: myGuess }),
+      const { doc, updateDoc, serverTimestamp, collection, getDocs, query, where } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase");
+      const snap = await getDocs(query(collection(db, "sequencePairs"), where("slotNumber", "==", gameState.currentSlot)));
+      const pair = snap.docs.find(d => d.data().playerAId === playerId || d.data().playerBId === playerId);
+      if (!pair) return;
+      
+      const isA = pair.data().playerAId === playerId;
+      await updateDoc(doc(db, "sequencePairs", pair.id), {
+        [isA ? "playerA_guess" : "playerB_guess"]: myGuess,
       });
-      const data = await res.json();
-      if (data.success) setHasSubmittedB(true);
+      await updateDoc(doc(db, "players", playerId), {
+        currentSubmission: { type: "guess", value: myGuess },
+        submittedAt: serverTimestamp()
+      });
+      setHasSubmittedB(true);
     } catch (e) { console.error(e); }
   };
 

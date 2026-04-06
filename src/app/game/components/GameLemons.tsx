@@ -166,31 +166,29 @@ export default function GameLemons({ playerId, gameState, isLocked }: Props) {
   const cancelRequest = async () => {
     if (!pendingRequest) return;
     try {
-      await fetch("/api/game/lemons/respond-to-trade", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tradeId: pendingRequest.id, sellerId: pendingRequest.sellerId, response: "expired" }),
-      });
+      const { doc, updateDoc, serverTimestamp } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase");
+      await updateDoc(doc(db, "marketTrades", pendingRequest.id), { status: "expired", resolvedAt: serverTimestamp() });
     } catch {}
     setPendingRequest(null);
   };
 
   const respondToTrade = async (tradeId: string, sellerId: string, response: "accepted" | "rejected") => {
     try {
-      const res = await fetch("/api/game/lemons/respond-to-trade", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tradeId, sellerId, response }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        if (response === "accepted") setTradeAccepted(true);
-        if (response === "rejected") {
-          setTradeRejected(true);
-          setTimeout(() => setTradeRejected(false), 2000);
-        }
-        setTradesReceived(prev => prev.filter(t => t.id !== tradeId));
+      const { doc, updateDoc, serverTimestamp } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase");
+      
+      await updateDoc(doc(db, "marketTrades", tradeId), { status: response, resolvedAt: serverTimestamp() });
+      if (response === "accepted") {
+        await updateDoc(doc(db, "players", playerId), { marketTradeId: tradeId });
       }
+      
+      if (response === "accepted") setTradeAccepted(true);
+      if (response === "rejected") {
+        setTradeRejected(true);
+        setTimeout(() => setTradeRejected(false), 2000);
+      }
+      setTradesReceived(prev => prev.filter(t => t.id !== tradeId));
     } catch {}
   };
 

@@ -164,11 +164,22 @@ export default function GameB8({ gameState, playerId }: Props) {
   const confirmVote = async () => {
     if (!pendingVote) return;
     try {
-      await fetch("/api/game/b8/submit-vote", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playerId, slotNumber: gameState.currentSlot, vote: pendingVote }),
+      const { doc, setDoc, updateDoc, serverTimestamp } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase");
+      
+      await setDoc(doc(db, "submissions", `${gameState.currentSlot}_${playerId}`), {
+        playerId,
+        gameId: "B8",
+        slotNumber: gameState.currentSlot,
+        vote: pendingVote,
+        submittedAt: serverTimestamp(),
+      }, { merge: true });
+
+      await updateDoc(doc(db, "players", playerId), {
+        currentSubmission: pendingVote,
+        submittedAt: serverTimestamp()
       });
+
       setMyVote(pendingVote);
       setShowConfirm(false);
       setPendingVote(null);
@@ -177,11 +188,13 @@ export default function GameB8({ gameState, playerId }: Props) {
 
   const handleConfidence = async (conf: number) => {
     try {
-      await fetch("/api/game/b8/submit-confidence", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playerId, slotNumber: gameState.currentSlot, confidence: conf }),
-      });
+      const { doc, setDoc } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase");
+      
+      await setDoc(doc(db, "submissions", `${gameState.currentSlot}_${playerId}`), {
+        confidence: conf,
+      }, { merge: true });
+
       setMyConfidence(conf);
     } catch (e) { console.error(e); }
   };

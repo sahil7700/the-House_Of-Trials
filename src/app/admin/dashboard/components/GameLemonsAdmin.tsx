@@ -130,25 +130,43 @@ export default function GameLemonsAdmin({ gameState, players, onUpdateGameState 
             if (!onUpdateGameState) return;
             setSaving(true);
             try {
-              const res = await fetch("/api/game/lemons/assign-roles", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  slotNumber: gameState.currentSlot,
-                  numSellers,
-                  numGoldCards: numGold,
-                  numLeadCards: numSellers - numGold,
-                  cardFlashSeconds,
-                  tradingSeconds,
-                }),
+              const { writeBatch, doc } = await import("firebase/firestore");
+              const { db } = await import("@/lib/firebase");
+              
+              const batch = writeBatch(db);
+              const shuffled = [...alivePlayers].sort(() => Math.random() - 0.5);
+              const sellerDocs = shuffled.slice(0, numSellers);
+              const buyerDocs = shuffled.slice(numSellers);
+              
+              const goldSellerDocs = sellerDocs.slice(0, numGold);
+              const leadSellerDocs = sellerDocs.slice(numGold);
+              
+              sellerDocs.forEach(p => {
+                const isGold = goldSellerDocs.some(g => g.id === p.id);
+                batch.update(doc(db, "players", p.id), {
+                  marketRole: "seller", marketCard: isGold ? "gold" : "lead", marketCardSeen: false, marketTradeId: null, marketTradesReceived: 0, marketTradesAccepted: 0,
+                });
               });
-              const data = await res.json();
-              if (data.success) {
-                setAssignedData(data);
-                onUpdateGameState({ phase: "roles_assigned" } as any);
-              } else {
-                alert(data.error || "Failed to assign roles.");
-              }
+              
+              buyerDocs.forEach(p => {
+                batch.update(doc(db, "players", p.id), {
+                  marketRole: "buyer", marketCard: null, marketCardSeen: false, marketTradeId: null, marketTradesReceived: 0, marketTradesAccepted: 0,
+                });
+              });
+              
+              batch.update(doc(db, "system", "gameState"), {
+                phase: "roles_assigned", revealStep: 0, pendingEliminations: [],
+                marketConfig: { numSellers, numGoldCards: numGold, numLeadCards: numSellers - numGold, cardFlashSeconds, tradingSeconds, pointsBuyerGold: 80, pointsBuyerLead: 0, pointsSellerSold: 60, pointsSellerUnsold: 20 },
+                marketRoles: { sellers: sellerDocs.map(d => d.id), buyers: buyerDocs.map(d => d.id) }
+              });
+              
+              await batch.commit();
+              const assignedData = {
+                sellers: sellerDocs.map(d => ({ id: d.id, name: d.name, card: goldSellerDocs.some(g => g.id === d.id) ? "gold" : "lead" })),
+                buyers: buyerDocs.map(d => ({ id: d.id, name: d.name }))
+              };
+              setAssignedData(assignedData);
+              onUpdateGameState({ phase: "roles_assigned" } as any);
             } catch (e: any) {
               alert(e.message);
             } finally {
@@ -214,9 +232,12 @@ export default function GameLemonsAdmin({ gameState, players, onUpdateGameState 
           onClick={async () => {
             setSaving(true);
             try {
-              const res = await fetch("/api/game/lemons/start-card-flash", { method: "POST" });
-              const data = await res.json();
-              if (!data.success) alert(data.error);
+              const { writeBatch, doc, serverTimestamp } = await import("firebase/firestore");
+              const { db } = await import("@/lib/firebase");
+              const batch = writeBatch(db);
+              batch.update(doc(db, "system", "gameState"), { phase: "card_flash", cardFlashStartedAt: serverTimestamp() });
+              await batch.commit();
+              onUpdateGameState?.({ phase: "card_flash", cardFlashStartedAt: new Date() } as any);
             } catch (e: any) { alert(e.message); }
             finally { setSaving(false); }
           }}
@@ -246,7 +267,12 @@ export default function GameLemonsAdmin({ gameState, players, onUpdateGameState 
           onClick={async () => {
             setSaving(true);
             try {
-              await fetch("/api/game/lemons/open-trading", { method: "POST" });
+              const { writeBatch, doc, serverTimestamp } = await import("firebase/firestore");
+              const { db } = await import("@/lib/firebase");
+              const batch = writeBatch(db);
+              batch.update(doc(db, "system", "gameState"), { phase: "trading_open", tradingStartedAt: serverTimestamp() });
+              await batch.commit();
+              onUpdateGameState?.({ phase: "trading_open", tradingStartedAt: new Date() } as any);
             } catch (e: any) { alert(e.message); }
             finally { setSaving(false); }
           }}
@@ -323,11 +349,17 @@ export default function GameLemonsAdmin({ gameState, players, onUpdateGameState 
           onClick={async () => {
             setSaving(true);
             try {
-              await fetch("/api/game/lemons/end-trading", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ slotNumber: gameState.currentSlot }),
-              });
+              const { writeBatch, doc, serverTimestamp } = await import("firebase/firestore");
+              const { db } = await import("@/lib/firebase");
+              const batch = writeBatch(db);
+              
+              // Set pending trades to expired
+              const pending = trades.filter(t => t.status === "pending");
+              pending.forEach(t => batch.update(doc(db, "marketTrades", t.id), { status: "expired", resolvedAt: serverTimestamp() }));
+              
+              batch.update(doc(db, "system", "gameState"), { phase: "trading_locked" });
+              await batch.commit();
+              onUpdateGameState?.({ phase: "trading_locked" } as any);
             } catch (e: any) { alert(e.message); }
             finally { setSaving(false); }
           }}
@@ -399,11 +431,7 @@ export default function GameLemonsAdmin({ gameState, players, onUpdateGameState 
         <div className="grid grid-cols-3 gap-2 text-xs">
           <button
             onClick={async () => {
-              await fetch("/api/game/lemons/reveal", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ step: 1 }),
-              });
+              const { writeBatch, doc } = await import("firebase/firestore"); const { db } = await import("@/lib/firebase"); const batch = writeBatch(db); batch.update(doc(db, "system", "gameState"), { revealStep: 1 }); await batch.commit(); onUpdateGameState?.({ revealStep: 1 } as any);
             }}
             disabled={revealStep >= 1}
             className={`py-3 border font-bold uppercase tracking-widest transition-colors ${revealStep >= 1 ? "bg-secondary/20 border-secondary text-secondary cursor-not-allowed" : "border-secondary text-secondary hover:bg-secondary hover:text-background"}`}
@@ -412,11 +440,7 @@ export default function GameLemonsAdmin({ gameState, players, onUpdateGameState 
           </button>
           <button
             onClick={async () => {
-              await fetch("/api/game/lemons/reveal", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ step: 2 }),
-              });
+              const { writeBatch, doc } = await import("firebase/firestore"); const { db } = await import("@/lib/firebase"); const batch = writeBatch(db); batch.update(doc(db, "system", "gameState"), { revealStep: 2 }); await batch.commit(); onUpdateGameState?.({ revealStep: 2 } as any);
             }}
             disabled={revealStep >= 2}
             className={`py-3 border font-bold uppercase tracking-widest transition-colors ${revealStep >= 2 ? "bg-secondary/20 border-secondary text-secondary cursor-not-allowed" : "border-secondary text-secondary hover:bg-secondary hover:text-background"}`}
@@ -425,11 +449,7 @@ export default function GameLemonsAdmin({ gameState, players, onUpdateGameState 
           </button>
           <button
             onClick={async () => {
-              await fetch("/api/game/lemons/reveal", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ step: 3 }),
-              });
+              const { writeBatch, doc } = await import("firebase/firestore"); const { db } = await import("@/lib/firebase"); const batch = writeBatch(db); batch.update(doc(db, "system", "gameState"), { revealStep: 3 }); await batch.commit(); onUpdateGameState?.({ revealStep: 3 } as any);
             }}
             disabled={revealStep >= 3}
             className={`py-3 border font-bold uppercase tracking-widest transition-colors ${revealStep >= 3 ? "bg-secondary/20 border-secondary text-secondary cursor-not-allowed" : "border-secondary text-secondary hover:bg-secondary hover:text-background"}`}
@@ -443,7 +463,17 @@ export default function GameLemonsAdmin({ gameState, players, onUpdateGameState 
             onClick={async () => {
               setSaving(true);
               try {
-                await fetch("/api/game/lemons/confirm-eliminations", { method: "POST" });
+                const { confirmEliminations } = await import("@/lib/services/admin-service");
+                await confirmEliminations(pendingEliminations, "adminId");
+                const { writeBatch, doc } = await import("firebase/firestore"); const { db } = await import("@/lib/firebase");
+                const batch = writeBatch(db);
+                results.forEach((r: any) => {
+                   if (r.buyerId) batch.update(doc(db, "players", r.buyerId), { pointsDelta: r.delta });
+                   else if (r.sellerId) batch.update(doc(db, "players", r.sellerId), { pointsDelta: r.delta });
+                });
+                batch.update(doc(db, "system", "gameState"), { phase: "confirmed" });
+                await batch.commit();
+                onUpdateGameState?.({ phase: "confirmed" } as any);
               } catch (e: any) { alert(e.message); }
               finally { setSaving(false); }
             }}

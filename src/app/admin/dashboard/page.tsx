@@ -589,7 +589,7 @@ export default function AdminDashboard() {
         timerDuration: nextGameTimer,
         roundType: nextRoundType,
         customOptions: nextGameId === "A4" || nextGameId === "C9" ? nextCustomOptions : [],
-        gameSpecificConfig: (nextGameId === "A1" || nextGameId === "A3" || nextGameId === "B7" || nextGameId === "C10" || nextGameId === "LEMONS") ? gsc : (nextGameId === "B8" ? {} : null),
+        gameSpecificConfig: (nextGameId === "A1" || nextGameId === "A3" || nextGameId === "B7" || nextGameId === "C10" || nextGameId === "LEMONS" || nextGameId === "B5") ? gsc : (nextGameId === "B8" ? {} : null),
         gameHistory: newHistory,
         results: null,
         submissionsCount: 0,
@@ -1005,15 +1005,15 @@ export default function AdminDashboard() {
                         </div>
                       )}
 
-                      {/* B6 / B8 / C9 / LEMONS / SILENCE Complex Natively Routed Configs */}
-                      {["B6", "B8", "C9", "LEMONS", "SILENCE"].includes(activeGameId) && (
+                      {/* B5 / B6 / B8 / C9 / LEMONS / SILENCE Complex Natively Routed Configs */}
+                      {["B5", "B6", "B8", "C9", "LEMONS", "SILENCE"].includes(activeGameId) && (
                          <div className="w-full">
                             <AdminGameStats gameState={gameState} players={players} onUpdateGameState={updateGameState} activeGameId={activeGameId} />
                          </div>
                       )}
                     </div>
 
-                    {!["B6", "B8", "C9", "LEMONS", "SILENCE"].includes(activeGameId) && (
+                    {!["B5", "B6", "B8", "C9", "LEMONS", "SILENCE"].includes(activeGameId) && (
                       <button 
                          onClick={() => {
                           let gsc: any = {};
@@ -1034,13 +1034,16 @@ export default function AdminDashboard() {
                           if (activeGameId === "LEMONS") {
                             gsc = { goldPct: 40, sellerPct: 50, assignmentsCreated: false };
                           }
+                          if (activeGameId === "B5") {
+                            gsc = { maxPoints: 100, pointDecayPerRank: 5, puzzleId: null, puzzleImage: null, puzzleAnswer: null, hasAnswer: false, questionText: null };
+                          }
 
                           updateGameState({ 
                             phase: "active",
                             playersAlive: totalAlive,
                             submissionsCount: 0,
                             customOptions: activeGameId === "A4" || activeGameId === "C9" ? nextCustomOptions : [],
-                            gameSpecificConfig: (activeGameId === "A1" || activeGameId === "A3" || activeGameId === "B7" || activeGameId === "C10" || activeGameId === "LEMONS") ? gsc : (activeGameId === "B8" ? {} : null),
+                            gameSpecificConfig: (activeGameId === "A1" || activeGameId === "A3" || activeGameId === "B7" || activeGameId === "C10" || activeGameId === "LEMONS" || activeGameId === "B5") ? gsc : (activeGameId === "B8" ? {} : null),
                           });
                           startTimer(gameState.timerDuration || 60);
                        }}

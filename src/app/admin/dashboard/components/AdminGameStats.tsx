@@ -5,6 +5,7 @@ import GameB8Admin from "./GameB8Admin";
 import GameC9Admin from "./GameC9Admin";
 import GameLemonsAdmin from "./GameLemonsAdmin";
 import GameSilenceAdmin from "./GameSilenceAdmin";
+import GameB5Admin from "./GameB5Admin";
 
 interface Props {
   gameState: GameState;
@@ -316,6 +317,10 @@ export default function AdminGameStats({ gameState, players, onUpdateGameState, 
 
   if (targetGameId === "SILENCE") {
     return <GameSilenceAdmin gameState={gameState} players={players} onUpdateGameState={onUpdateGameState} />;
+  }
+
+  if (targetGameId === "B5") {
+    return <GameB5Admin gameState={gameState} players={players} onUpdateGameState={onUpdateGameState} />;
   }
 
   return null;

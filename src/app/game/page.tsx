@@ -22,6 +22,7 @@ import GameC9 from "./components/GameC9";
 import GameC10 from "./components/GameC10";
 import GameLemons from "./components/GameLemons";
 import GameSilence from "./components/GameSilence";
+import GameB5 from "./components/GameB5";
 import OfflineGame from "./components/OfflineGame";
 
 export default function GameUI() {
@@ -147,6 +148,7 @@ export default function GameUI() {
        case "C10": return <GameC10 {...commonProps} />;
        case "LEMONS": return <GameLemons playerId={player.id} gameState={gameState} isLocked={isLocked} />;
        case "SILENCE": return <GameSilence {...commonProps} />;
+       case "B5": return <GameB5 {...commonProps} />;
        default: return <OfflineGame isLocked={isLocked} gameName={gameState?.currentRoundTitle || currentSlotConfig?.gameName || "Physical Trial"} />;
      }
   };

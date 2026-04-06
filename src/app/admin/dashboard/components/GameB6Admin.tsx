@@ -7,9 +7,10 @@ interface Props {
   gameState: GameState;
   players: PlayerData[];
   onUpdateGameState?: (update: Partial<GameState>) => void;
+  startTimer?: (duration: number) => Promise<{ success: boolean; error?: string }>;
 }
 
-export default function GameB6Admin({ gameState, players, onUpdateGameState }: Props) {
+export default function GameB6Admin({ gameState, players, onUpdateGameState, startTimer }: Props) {
   const [previewCutoff, setPreviewCutoff] = useState(50);
   
   const alivePlayers = players.filter(p => p.status === "alive");
@@ -94,19 +95,19 @@ export default function GameB6Admin({ gameState, players, onUpdateGameState }: P
     <div className="w-full space-y-6">
        {isLobby && (
           <div className="w-full bg-secondary/10 border border-secondary p-6 text-center">
-             <button 
-                onClick={() => {
-                   if (onUpdateGameState) {
-                      import("firebase/firestore").then(({ serverTimestamp }) => {
-                         onUpdateGameState({ 
-                            phase: "active", 
-                            timerStartedAt: serverTimestamp() as any,
-                            submissionsCount: 0,
-                            playersAlive: alivePlayers.length
-                         });
-                      });
-                   }
-                }}
+              <button
+                 onClick={async () => {
+                    if (!onUpdateGameState) return;
+                    const duration = gameState.timerDuration || 60;
+                    onUpdateGameState({
+                       phase: "active",
+                       submissionsCount: 0,
+                       playersAlive: alivePlayers.length
+                    });
+                    if (startTimer) {
+                       await startTimer(duration);
+                    }
+                 }}
                 className="w-full py-4 text-xl bg-secondary text-background font-bold tracking-widest uppercase hover:bg-white transition-colors"
              >
                 OPEN BIDDING (START GAME)

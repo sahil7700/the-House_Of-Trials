@@ -56,9 +56,9 @@ export async function POST(req: NextRequest) {
       }
     });
 
-    // Apply Phase B guesses (from submissions collection, fallback to players collection)
+    // Apply Phase B guesses — read from player docs (authoritative source after Phase B)
     for (const pair of pairs) {
-       // Try submissions collection first (authoritative), then fallback to players doc
+       if (pair.playerBId === "BYE") continue;
        const paGuess = guessSubmissions[pair.playerAId] ?? playerDocs.find(p => p.id === pair.playerAId)?.currentSubmission?.value;
        const pbGuess = guessSubmissions[pair.playerBId] ?? playerDocs.find(p => p.id === pair.playerBId)?.currentSubmission?.value;
        if (paGuess) pair.playerA_guess = paGuess;
@@ -72,6 +72,15 @@ export async function POST(req: NextRequest) {
 
     // Calculate scores and initialize points
     for (const pair of pairs) {
+      if (pair.playerBId === "BYE") {
+        pointsDeltaMap[pair.playerAId] = 80;
+        pair.playerA_score = 0;
+        pair.winnerId = pair.playerAId;
+        pair.loserId = "BYE";
+        pair.tied = false;
+        continue;
+      }
+
       pointsDeltaMap[pair.playerAId] = 0;
       pointsDeltaMap[pair.playerBId] = 0;
 

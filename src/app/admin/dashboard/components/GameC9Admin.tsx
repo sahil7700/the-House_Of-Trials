@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { GameState, GameSlotConfig } from "@/lib/services/game-service";
 import { PlayerData } from "@/lib/services/player-service";
-import { collection, writeBatch, doc } from "firebase/firestore";
+import { collection, writeBatch, doc, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 interface Props {
@@ -115,14 +115,15 @@ export default function GameC9Admin({ gameState, players, onUpdateGameState }: P
 
   const startPhaseB = async () => {
      if (!onUpdateGameState) return;
-     // When moving to Phase B, we MUST fetch current submissons (secret sequences) and bake them into the pairs doc
      try {
+       const freshPlayersSnap = await getDocs(collection(db, "players"));
+       const freshPlayers = freshPlayersSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+
        const pairsDocRef = doc(db, "pairs", String(gameState.currentSlot));
-       
        const currentPairs = gameState.results?.pairs || [];
        const updatedPairs = currentPairs.map((p: any) => {
-          const pa = players.find(player => player.id === p.playerAId);
-          const pb = players.find(player => player.id === p.playerBId);
+          const pa = freshPlayers.find((player: any) => player.id === p.playerAId);
+          const pb = freshPlayers.find((player: any) => player.id === p.playerBId);
           return {
              ...p,
              playerA_sequence: pa?.currentSubmission?.type === "sequence" ? pa.currentSubmission.value : null,
@@ -132,19 +133,19 @@ export default function GameC9Admin({ gameState, players, onUpdateGameState }: P
 
        const batch = writeBatch(db);
        batch.update(pairsDocRef, { pairs: updatedPairs });
-       
-       // Now clear currentSubs so players can type their guesses
-       alivePlayers.forEach(p => {
-          batch.update(doc(db, "players", p.id), { currentSubmission: null });
+       freshPlayers.forEach((p: any) => {
+          if (p.status === "alive") {
+             batch.update(doc(db, "players", p.id), { currentSubmission: null });
+          }
        });
        await batch.commit();
-       
-       onUpdateGameState({ 
+
+       onUpdateGameState({
           phase: "active_b",
-          results: { pairs: updatedPairs } 
+          results: { pairs: updatedPairs }
        });
      } catch (e) {
-       console.error(e);
+       console.error("startPhaseB error:", e);
      }
   };
 

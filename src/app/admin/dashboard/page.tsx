@@ -1008,7 +1008,7 @@ export default function AdminDashboard() {
                       {/* B5 / B6 / B8 / C9 / LEMONS / SILENCE Complex Natively Routed Configs */}
                       {["B5", "B6", "B8", "C9", "LEMONS", "SILENCE"].includes(activeGameId) && (
                          <div className="w-full">
-                            <AdminGameStats gameState={gameState} players={players} onUpdateGameState={updateGameState} activeGameId={activeGameId} />
+                            <AdminGameStats gameState={gameState} players={players} onUpdateGameState={updateGameState} activeGameId={activeGameId} startTimer={startTimer} />
                          </div>
                       )}
                     </div>
@@ -1097,7 +1097,7 @@ export default function AdminDashboard() {
                      </div>
 
                      <div className="w-full pt-4">
-                        <AdminGameStats gameState={gameState} players={players} onUpdateGameState={updateGameState} activeGameId={activeGameId} />
+                        <AdminGameStats gameState={gameState} players={players} onUpdateGameState={updateGameState} activeGameId={activeGameId} startTimer={startTimer} />
                      </div>
                   </div>
                 )}

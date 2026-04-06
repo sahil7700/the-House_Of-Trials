@@ -12,9 +12,10 @@ interface Props {
   players: PlayerData[];
   onUpdateGameState?: (update: Partial<GameState>) => void;
   activeGameId?: string;
+  startTimer?: (duration: number) => Promise<{ success: boolean; error?: string }>;
 }
 
-export default function AdminGameStats({ gameState, players, onUpdateGameState, activeGameId }: Props) {
+export default function AdminGameStats({ gameState, players, onUpdateGameState, activeGameId, startTimer }: Props) {
   const alivePlayers = players.filter(p => p.status === "alive");
   const submissions = alivePlayers.filter(p => p.currentSubmission !== null && p.currentSubmission !== undefined);
   const gsc = (gameState as any).gameSpecificConfig || {};
@@ -300,7 +301,7 @@ export default function AdminGameStats({ gameState, players, onUpdateGameState, 
   }
 
   if (targetGameId === "B6") {
-    return <GameB6Admin gameState={gameState} players={players} onUpdateGameState={onUpdateGameState} />;
+    return <GameB6Admin gameState={gameState} players={players} onUpdateGameState={onUpdateGameState} startTimer={startTimer} />;
   }
 
   if (targetGameId === "B8") {

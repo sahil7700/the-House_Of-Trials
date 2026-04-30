@@ -2,13 +2,8 @@ import Link from "next/link";
 
 export default function Home() {
   return (
-    <main className="relative min-h-screen flex flex-col items-center justify-center p-6 overflow-hidden">
-      
-      {/* Background decoration */}
-      <div className="absolute inset-0 z-0 bg-scanlines mix-blend-overlay opacity-30 pointer-events-none" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-primary/5 rounded-full blur-3xl pointer-events-none" />
-
-      <div className="z-10 flex flex-col items-center justify-center max-w-3xl text-center space-y-12">
+    <LazyMotion features={domAnimation}>
+      <main className="relative min-h-screen flex flex-col items-center justify-center p-6 overflow-hidden">
         
         {/* Suit Cluster */}
         <div className="flex gap-4 text-primary text-4xl sm:text-5xl drop-shadow-glow-red animate-hero-suits">
@@ -56,6 +51,7 @@ export default function Home() {
         Alice in Borderland · College Tech Fest
       </div>
 
-    </main>
+      </main>
+    </LazyMotion>
   );
 }

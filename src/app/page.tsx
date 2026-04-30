@@ -1,7 +1,4 @@
-"use client";
-
 import Link from "next/link";
-import { motion } from "framer-motion";
 
 export default function Home() {
   return (
@@ -14,66 +11,50 @@ export default function Home() {
       <div className="z-10 flex flex-col items-center justify-center max-w-3xl text-center space-y-12">
         
         {/* Suit Cluster */}
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 1, ease: "easeOut" }}
-          className="flex gap-4 text-primary text-4xl sm:text-5xl drop-shadow-glow-red"
-        >
+        <div className="flex gap-4 text-primary text-4xl sm:text-5xl drop-shadow-glow-red animate-hero-suits">
           <span>♠</span>
           <span className="text-textDefault opacity-50">♣</span>
           <span className="text-secondary drop-shadow-glow-gold">♦</span>
           <span>♥</span>
-        </motion.div>
+        </div>
 
         {/* Headings */}
         <div className="space-y-6">
-          <motion.h1 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3, duration: 0.8 }}
+          <h1 
             className="text-6xl sm:text-7xl md:text-8xl font-serif tracking-[0.2em] uppercase text-textDefault"
-            style={{ textShadow: "0 0 20px rgba(232, 232, 240, 0.2)" }}
+            style={{
+              animation: "hero-heading 0.8s 0.3s both ease-out",
+              willChange: "transform, opacity",
+              textShadow: "0 0 20px rgba(232, 232, 240, 0.2)",
+            }}
           >
             House of
             <br />
             <span className="text-primary tracking-[0.3em]">Trials</span>
-          </motion.h1>
-          
-          <motion.p 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 1.2, duration: 1 }}
-            className="text-lg sm:text-xl text-textMuted tracking-widest uppercase"
+          </h1>
+
+          <p 
+            className="text-lg sm:text-xl text-textMuted tracking-widest uppercase animate-hero-subtitle"
           >
             Only one will remain.
-          </motion.p>
+          </p>
         </div>
 
         {/* CTA */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 1.5, duration: 0.8 }}
-        >
+        <div className="animate-hero-cta">
           <Link
             href="/join"
             className="group relative inline-flex items-center justify-center px-8 py-4 bg-primary/10 border-2 border-primary text-primary font-mono tracking-widest uppercase transition-all duration-300 hover:bg-primary hover:text-white shadow-glow-red hover:shadow-[0_0_20px_rgba(192,57,43,0.6)]"
           >
             Enter the Arena <span className="ml-3 group-hover:translate-x-1 transition-transform">→</span>
           </Link>
-        </motion.div>
+        </div>
       </div>
 
       {/* Footer */}
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 2, duration: 1 }}
-        className="absolute bottom-8 text-xs text-textMuted/50 tracking-widest uppercase text-center"
-      >
+      <div className="absolute bottom-8 text-xs text-textMuted/50 tracking-widest uppercase text-center animate-hero-footer">
         Alice in Borderland · College Tech Fest
-      </motion.div>
+      </div>
 
     </main>
   );

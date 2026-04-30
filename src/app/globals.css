@@ -23,15 +23,73 @@
     left: 0;
     bottom: 0;
     right: 0;
-    background: linear-gradient(
+    background: repeating-linear-gradient(
       to bottom,
-      rgba(255, 255, 255, 0),
-      rgba(255, 255, 255, 0) 50%,
-      rgba(0, 0, 0, 0.1) 50%,
-      rgba(0, 0, 0, 0.1)
+      rgba(255, 255, 255, 0) 0,
+      rgba(255, 255, 255, 0) 2px,
+      rgba(0, 0, 0, 0.08) 2px,
+      rgba(0, 0, 0, 0.08) 4px
     );
     background-size: 100% 4px;
     z-index: 50;
     pointer-events: none;
+  }
+
+  @keyframes hero-suits {
+    from {
+      opacity: 0;
+      transform: scale(0.8);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes hero-heading {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes hero-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes hero-cta {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-hero-suits {
+    animation: hero-suits 1s ease-out both;
+  }
+
+  .animate-hero-subtitle {
+    animation: hero-fade 1s 1.2s ease-out both;
+  }
+
+  .animate-hero-cta {
+    animation: hero-cta 0.8s 1.5s ease-out both;
+  }
+
+  .animate-hero-footer {
+    animation: hero-fade 1s 2s ease-out both;
   }
 }

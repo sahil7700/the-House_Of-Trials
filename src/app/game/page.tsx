@@ -9,21 +9,21 @@ import { subscribeToPlayer, PlayerData } from "@/lib/services/player-service";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { motion, AnimatePresence } from "framer-motion";
+import dynamic from "next/dynamic";
 
-// Dynamic Imports
-import GameA1 from "./components/GameA1";
-import GameA2 from "./components/GameA2";
-import GameA3 from "./components/GameA3";
-import GameA4 from "./components/GameA4";
-import GameB6 from "./components/GameB6";
-import GameB7 from "./components/GameB7";
-import GameB8 from "./components/GameB8";
-import GameC9 from "./components/GameC9";
-import GameC10 from "./components/GameC10";
-import GameLemons from "./components/GameLemons";
-import GameSilence from "./components/GameSilence";
-import GameB5 from "./components/GameB5";
-import OfflineGame from "./components/OfflineGame";
+const GameA1 = dynamic(() => import("./components/GameA1"));
+const GameA2 = dynamic(() => import("./components/GameA2"));
+const GameA3 = dynamic(() => import("./components/GameA3"));
+const GameA4 = dynamic(() => import("./components/GameA4"));
+const GameB6 = dynamic(() => import("./components/GameB6"));
+const GameB7 = dynamic(() => import("./components/GameB7"));
+const GameB8 = dynamic(() => import("./components/GameB8"));
+const GameC9 = dynamic(() => import("./components/GameC9"));
+const GameC10 = dynamic(() => import("./components/GameC10"));
+const GameLemons = dynamic(() => import("./components/GameLemons"));
+const GameSilence = dynamic(() => import("./components/GameSilence"));
+const GameB5 = dynamic(() => import("./components/GameB5"));
+const OfflineGame = dynamic(() => import("./components/OfflineGame"));
 
 export default function GameUI() {
   const { user, loading: authLoading } = useAuth();
